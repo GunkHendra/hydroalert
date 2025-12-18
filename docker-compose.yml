@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./hydroalert-backend
+    container_name: mern-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./hydroalert-backend:/app
+      - /app/node_modules
+    env_file:
+      - ./hydroalert-backend/.env
+    depends_on:
+      - mongo
+
+  frontend:
+    build:
+      context: ./hydroalert-frontend
+    container_name: mern-frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./hydroalert-frontend:/app
+      - /app/node_modules
+    env_file:
+      - ./hydroalert-frontend/.env
+    depends_on:
+      - backend
+
+  mongo:
+    image: mongo:7
+    container_name: hydroalert-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:
