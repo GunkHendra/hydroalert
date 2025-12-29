@@ -3,6 +3,24 @@ const router = express.Router();
 import Device from '../models/Device.js';
 import SensorData from '../models/SensorData.js';
 
+router.post('/register', async (req, res) => {
+    const deviceID = req.body.deviceID;
+    const location = req.body.location || 'Unknown';
+    try {
+        let device = await Device.findOne({ deviceID });
+        if (device) {
+            return res.status(400).json({ message: 'Device already registered' });
+        }
+        device = new Device({ deviceID, location });
+        await device.save();
+        res.status(201).json({ message: 'Device registered successfully' });
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
 router.post('/data', async (req, res) => {
     const { deviceID, waterDebit, waterLevel, temperature, humidity, windSpeed } = req.body;
     const io = req.app.get('socketio'); // Get socket instance
