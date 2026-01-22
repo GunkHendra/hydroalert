@@ -1,0 +1,387 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Flood Alert System API",
+        "version": "1.0.0",
+        "description": "API for monitoring water levels, managing IoT devices, and alerts."
+    },
+    "servers": [
+        {
+            "url": "http://localhost:5000"
+        }
+    ],
+    "paths": {
+        "/api/dashboard": {
+            "get": {
+                "summary": "Get dashboard data summary",
+                "tags": [
+                    "Dashboard"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dashboard data summary",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "water": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "level": {
+                                                            "type": "number"
+                                                        },
+                                                        "status": {
+                                                            "type": "string"
+                                                        },
+                                                        "updatedAt": {
+                                                            "type": "string",
+                                                            "format": "date-time"
+                                                        }
+                                                    }
+                                                },
+                                                "wind": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "speed": {
+                                                            "type": "number"
+                                                        }
+                                                    }
+                                                },
+                                                "rain": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "intensity": {
+                                                            "type": "number"
+                                                        }
+                                                    }
+                                                },
+                                                "devices": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "total": {
+                                                            "type": "integer"
+                                                        },
+                                                        "active": {
+                                                            "type": "integer"
+                                                        }
+                                                    }
+                                                },
+                                                "notifications": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/monitoring": {
+            "get": {
+                "summary": "Get monitoring data for all devices",
+                "tags": [
+                    "Dashboard"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Monitoring data for all devices",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "stats": {
+                                            "type": "object",
+                                            "properties": {
+                                                "totalDevices": {
+                                                    "type": "integer"
+                                                },
+                                                "activeDevices": {
+                                                    "type": "integer"
+                                                }
+                                            }
+                                        },
+                                        "devices": {
+                                            "type": "array",
+                                            "description": "Array of device monitoring data",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "deviceID": {
+                                                        "type": "string"
+                                                    },
+                                                    "location": {
+                                                        "type": "string"
+                                                    },
+                                                    "lastActive": {
+                                                        "type": "string",
+                                                        "format": "date-time"
+                                                    },
+                                                    "water": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "level": {
+                                                                "type": "number"
+                                                            },
+                                                            "status": {
+                                                                "type": "string"
+                                                            },
+                                                            "updatedAt": {
+                                                                "type": "string",
+                                                                "format": "date-time"
+                                                            }
+                                                        }
+                                                    },
+                                                    "wind": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "speed": {
+                                                                "type": "number"
+                                                            }
+                                                        }
+                                                    },
+                                                    "rain": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "intensity": {
+                                                                "type": "number"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/device/register": {
+            "post": {
+                "summary": "Register a new IoT device",
+                "tags": [
+                    "Devices"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "deviceID": {
+                                        "type": "string",
+                                        "example": "DEV-001"
+                                    },
+                                    "lat": {
+                                        "type": "number",
+                                        "example": -6.2
+                                    },
+                                    "long": {
+                                        "type": "number",
+                                        "example": 106.816666
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Device already registered"
+                    },
+                    "201": {
+                        "description": "Device registered successfully"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                }
+            }
+        },
+        "/api/device/store-data": {
+            "post": {
+                "summary": "Store sensor data from IoT device",
+                "tags": [
+                    "Devices"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "deviceID": {
+                                        "type": "string",
+                                        "example": "DEV-001"
+                                    },
+                                    "rainIntensity": {
+                                        "type": "number",
+                                        "example": 15.5
+                                    },
+                                    "waterLevel": {
+                                        "type": "number",
+                                        "example": 120
+                                    },
+                                    "windSpeed": {
+                                        "type": "number",
+                                        "example": 5.2
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Sensor data stored successfully"
+                    },
+                    "500": {
+                        "description": "Server Error"
+                    }
+                }
+            }
+        },
+        "/api/notifications": {
+            "get": {
+                "summary": "Get notification history grouped by date",
+                "tags": [
+                    "Notifications"
+                ],
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "deviceID",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Filter by specific device ID (use 'all' for all devices)"
+                    },
+                    {
+                        "in": "query",
+                        "name": "severity",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "Normal",
+                                "Siaga",
+                                "Waspada",
+                                "Bahaya",
+                                "all"
+                            ]
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "sort",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "newest",
+                                "oldest"
+                            ]
+                        },
+                        "description": "Sort order by date"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "total": {
+                                                        "type": "integer"
+                                                    },
+                                                    "items": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "$ref": "#/components/schemas/Notification"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Notification": {
+                "type": "object",
+                "properties": {
+                    "_id": {
+                        "type": "string",
+                        "example": "655b3f..."
+                    },
+                    "deviceID": {
+                        "type": "string",
+                        "example": "DEV-001"
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Water Level Alert"
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Water level has reached 150cm"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": [
+                            "Normal",
+                            "Siaga",
+                            "Waspada",
+                            "Bahaya"
+                        ]
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                }
+            }
+        }
+    },
+    "tags": []
+}
