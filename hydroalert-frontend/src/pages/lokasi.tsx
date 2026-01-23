@@ -1,6 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import axios from 'axios'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
+
+type LocationValue = string | { latitude?: number; longitude?: number } | undefined
+
+type MonitoringDeviceAPI = {
+	deviceID?: string
+	location?: LocationValue
+	lastActive?: string
+	water?: { level?: number; status?: string; updatedAt?: string }
+}
+
+type MonitoringResponse = {
+	success: boolean
+	stats?: { totalDevices?: number; activeDevices?: number }
+	devices?: MonitoringDeviceAPI[]
+}
 
 type Sensor = {
 	name: string
@@ -11,7 +27,7 @@ type Sensor = {
 	location: string
 }
 
-const sensors: Sensor[] = [
+const fallbackSensors: Sensor[] = [
 	{
 		name: 'Perangkat A',
 		status: 'Normal',
@@ -38,8 +54,73 @@ const sensors: Sensor[] = [
 	},
 ]
 
+const normalizeStatus = (status?: string): Sensor['status'] => {
+	const normalized = (status || '').toLowerCase()
+	if (normalized === 'warning' || normalized === 'bahaya' || normalized === 'waspada') return 'Waspada'
+	return 'Normal'
+}
+
+const formatLocation = (location: LocationValue): string => {
+	if (typeof location === 'string' && location.trim().length) return location
+	if (location && typeof location === 'object') {
+		const { latitude, longitude } = location
+		if (typeof latitude === 'number' && typeof longitude === 'number') return `Lat ${latitude.toFixed(4)}, Lon ${longitude.toFixed(4)}`
+	}
+	return 'Lokasi tidak diketahui'
+}
+
+const formatAgo = (iso?: string) => {
+	if (!iso) return '-'
+	const now = Date.now()
+	const past = new Date(iso).getTime()
+	const diffMs = now - past
+	const minutes = Math.floor(diffMs / 60000)
+	if (minutes < 1) return 'baru saja'
+	if (minutes < 60) return `${minutes} menit lalu`
+	const hours = Math.floor(minutes / 60)
+	if (hours < 24) return `${hours} jam lalu`
+	const days = Math.floor(hours / 24)
+	return `${days} hari lalu`
+}
+
+const mapSensors = (payload: MonitoringDeviceAPI[]): Sensor[] =>
+	payload.map((device) => ({
+		name: device.deviceID || 'Perangkat',
+		status: normalizeStatus(device.water?.status),
+		waterLevel: device.water?.level ?? 0,
+		unit: 'cm',
+		updatedAt: formatAgo(device.water?.updatedAt || device.lastActive),
+		location: formatLocation(device.location),
+	}))
+
 export default function Lokasi() {
 	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const [sensors, setSensors] = useState<Sensor[]>(fallbackSensors)
+	const primaryLocation = sensors[0]?.location || 'Lokasi tidak diketahui'
+	const lastUpdatedLabel = sensors[0]?.updatedAt || '-'
+
+	useEffect(() => {
+		let isMounted = true
+
+		const fetchMonitoring = async () => {
+			try {
+				const res = await axios.get<MonitoringResponse>('http://localhost:3000/api/monitoring')
+				if (!isMounted) return
+				const mapped = mapSensors(res.data?.devices || [])
+				if (mapped.length) setSensors(mapped)
+			} catch (error) {
+				console.error('Failed to fetch monitoring data', error)
+			}
+		}
+
+		fetchMonitoring()
+		const intervalId = setInterval(fetchMonitoring, 30000)
+
+		return () => {
+			isMounted = false
+			clearInterval(intervalId)
+		}
+	}, [])
 
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
@@ -65,7 +146,7 @@ export default function Lokasi() {
 											<span className="h-8 w-8 rounded-full bg-cyan-500 text-white grid place-items-center text-lg font-bold">📍</span>
 											<span>Peta Lokasi Sensor</span>
 										</div>
-										<span className="text-xs text-slate-500">Sungai Pamegan, Denpasar</span>
+										<span className="text-xs text-slate-500">{primaryLocation}</span>
 									</div>
 									<div className="relative bg-slate-100">
 										<div className="relative w-full" style={{ paddingTop: '65%' }}>
@@ -98,7 +179,7 @@ export default function Lokasi() {
 								<div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
 									<div className="flex items-center justify-between">
 										<p className="text-sm sm:text-base font-semibold text-slate-800">Daftar Sensor</p>
-										<span className="text-[11px] sm:text-xs text-slate-500">Diperbarui 2 menit lalu</span>
+										<span className="text-[11px] sm:text-xs text-slate-500">Diperbarui {lastUpdatedLabel}</span>
 									</div>
 
 									<div className="space-y-3">

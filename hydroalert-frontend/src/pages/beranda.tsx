@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import axios from 'axios'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
 
@@ -9,7 +10,18 @@ type Notification = {
   time: string
 }
 
-const notifications: Notification[] = [
+type DashboardResponse = {
+  success: boolean
+  data: {
+    water: { level: number; status: string; updatedAt: string }
+    wind: { speed: number }
+    rain: { intensity: number }
+    devices: { total: number; active: number }
+    notifications: Partial<Notification>[]
+  }
+}
+
+const fallbackNotifications: Notification[] = [
   {
     title: 'Sistem Normal',
     description: 'Semua sensor berfungsi dengan baik',
@@ -38,6 +50,40 @@ const sensors = [
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [dashboard, setDashboard] = useState<DashboardResponse['data'] | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchDashboard = async () => {
+      setIsLoading(true)
+      try {
+        const res = await axios.get<DashboardResponse>('http://localhost:3000/api/dashboard')
+        if (isMounted && res.data?.data) {
+          setDashboard(res.data.data)
+        }
+      } catch (error) {
+        console.error('Failed to fetch dashboard', error)
+      } finally {
+        if (isMounted) setIsLoading(false)
+      }
+    }
+
+    fetchDashboard()
+    const intervalId = setInterval(fetchDashboard, 30000)
+
+    return () => {
+      isMounted = false
+      clearInterval(intervalId)
+    }
+  }, [])
+
+  const formatUpdatedAt = (iso: string | undefined) => {
+    if (!iso) return '-'
+    const date = new Date(iso)
+    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
@@ -61,7 +107,7 @@ function App() {
                 <div className="space-y-2 self-start">
                   <div className="flex items-end gap-3">
                     <span className="text-6xl font-black leading-none drop-shadow-[0_8px_24px_rgba(0,0,0,0.2)]">
-                      155
+                      {dashboard?.water.level ?? 0}
                     </span>
                     <span className="text-2xl font-semibold text-slate-700">cm</span>
                   </div>
@@ -70,7 +116,7 @@ function App() {
                 <div className="flex-1 flex justify-end self-center">
                   <div className="flex items-center gap-3 bg-gradient-to-r from-orange-500 to-red-500 px-7 py-3 rounded-full shadow-lg shadow-orange-600/40 border border-orange-100">
                     <span className="text-lg font-black uppercase tracking-[0.2em] text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
-                      Waspada
+                      {(dashboard?.water.status || 'Waspada').toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -89,7 +135,9 @@ function App() {
                 </svg>
               </div>
 
-              <p className="absolute bottom-3 left-6 z-10 text-xs text-white">Terakhir diperbaharui: 10.00</p>
+              <p className="absolute bottom-3 left-6 z-10 text-xs text-white">
+                Terakhir diperbaharui: {formatUpdatedAt(dashboard?.water.updatedAt)}
+              </p>
             </div>
 
             <div className="grid gap-4 sm:gap-5 lg:gap-6 lg:grid-cols-2">
@@ -98,7 +146,7 @@ function App() {
                   <div>
                     <p className="text-sm text-slate-500">Kecepatan Angin</p>
                     <div className="flex items-end gap-2">
-                      <span className="text-4xl font-semibold text-slate-900">25</span>
+                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.wind.speed ?? 0}</span>
                       <span className="text-base text-slate-500">km/jam</span>
                     </div>
                   </div>
@@ -120,7 +168,7 @@ function App() {
                   <div>
                     <p className="text-sm text-slate-500">Debit Air Hujan</p>
                     <div className="flex items-end gap-2">
-                      <span className="text-4xl font-semibold text-slate-900">25</span>
+                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.rain.intensity ?? 0}</span>
                       <span className="text-base text-slate-500">mm/jam</span>
                     </div>
                   </div>
@@ -144,14 +192,14 @@ function App() {
                   <div className="space-y-7">
                     <p className="text-sm text-slate-500">Jumlah Alat Aktif</p>
                     <div className="flex items-end gap-2">
-                      <span className="text-4xl font-semibold text-slate-900">3</span>
-                      <span className="text-base text-slate-500">/ 3</span>
+                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.devices.active ?? 0}</span>
+                      <span className="text-base text-slate-500">/ {dashboard?.devices.total ?? sensors.length}</span>
                     </div>
                     <p className="text-xs text-slate-500">Unit Sensor</p>
                     
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
-                    100%
+                    {dashboard?.devices.total ? Math.round(((dashboard?.devices.active ?? 0) / dashboard?.devices.total) * 100) : 0}%
                   </span>
                 </div>
                 <div className="flex-1" />
@@ -191,9 +239,9 @@ function App() {
                 </div>
 
                 <div className="space-y-3">
-                  {notifications.map((item) => (
+                  {(dashboard?.notifications?.length ? dashboard.notifications : fallbackNotifications).map((item, index) => (
                     <div
-                      key={item.title}
+                      key={item.title ?? index}
                       className={`rounded-xl border px-4 py-3 shadow-sm flex items-start justify-between gap-3 ${
                         item.status === 'normal'
                           ? 'border-emerald-200 bg-emerald-50/70'

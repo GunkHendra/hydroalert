@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import axios from 'axios'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
 
@@ -17,9 +18,27 @@ type DayGroup = {
 	items: Notification[]
 }
 
-const tabs = ['All Devices', 'Device A', 'Device B', 'Device C']
+type NotificationAPI = {
+	_id?: string
+	deviceID?: string
+	title?: string
+	message?: string
+	severity?: string
+	createdAt?: string
+	updatedAt?: string
+}
 
-const days: DayGroup[] = [
+type NotificationBucket = {
+	total: number
+	items: NotificationAPI[]
+}
+
+type NotificationsResponse = {
+	success: boolean
+	data: Record<string, NotificationBucket>
+}
+
+const fallbackDays: DayGroup[] = [
 	{
 		date: '11 November 2025',
 		total: 4,
@@ -149,12 +168,115 @@ function statusClasses(status: Notification['status']) {
 	}
 }
 
+const normalizeStatus = (severity?: string): Notification['status'] => {
+	const normalized = (severity || '').toLowerCase()
+	if (normalized === 'warning' || normalized === 'high' || normalized === 'critical') return 'warning'
+	if (normalized === 'info') return 'info'
+	return 'normal'
+}
+
+const formatDateDisplay = (iso?: string) => {
+	if (!iso) return 'Tanggal tidak diketahui'
+	const date = new Date(iso)
+	return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+const formatTimeDisplay = (iso?: string) => {
+	if (!iso) return '-'
+	const date = new Date(iso)
+	return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+}
+
+const formatAgo = (iso?: string) => {
+	if (!iso) return '-'
+	const now = Date.now()
+	const past = new Date(iso).getTime()
+	const diffMs = now - past
+	const minutes = Math.floor(diffMs / 60000)
+	if (minutes < 1) return 'baru saja'
+	if (minutes < 60) return `${minutes} menit lalu`
+	const hours = Math.floor(minutes / 60)
+	if (hours < 24) return `${hours} jam lalu`
+	const days = Math.floor(hours / 24)
+	return `${days} hari lalu`
+}
+
+const mapNotificationsToDayGroups = (buckets: Record<string, NotificationBucket>): { days: DayGroup[]; devices: string[] } => {
+	const grouped: Record<string, DayGroup> = {}
+	const deviceSet = new Set<string>()
+
+	Object.values(buckets || {}).forEach((bucket) => {
+		bucket.items?.forEach((item) => {
+			const dateLabel = formatDateDisplay(item.createdAt)
+			const status = normalizeStatus(item.severity)
+			const device = item.deviceID || 'Unknown Device'
+			deviceSet.add(device)
+
+			const mapped: Notification = {
+				title: item.title || 'Notifikasi',
+				device,
+				description: item.message || '-',
+				time: formatTimeDisplay(item.createdAt),
+				ago: formatAgo(item.createdAt),
+				status,
+			}
+
+			if (!grouped[dateLabel]) {
+				grouped[dateLabel] = { date: dateLabel, total: 0, items: [] }
+			}
+
+			grouped[dateLabel].items.push(mapped)
+			grouped[dateLabel].total += 1
+		})
+	})
+
+	const days = Object.values(grouped).sort((a, b) => {
+		const aISO = formatDateISO(a.date) || ''
+		const bISO = formatDateISO(b.date) || ''
+		return bISO.localeCompare(aISO)
+	})
+
+	return { days, devices: Array.from(deviceSet) }
+}
+
 export default function Riwayat() {
-	const [activeTab, setActiveTab] = useState<string>(tabs[0])
+	const [tabs, setTabs] = useState<string[]>(['All Devices'])
+	const [activeTab, setActiveTab] = useState<string>('All Devices')
+	const [days, setDays] = useState<DayGroup[]>(fallbackDays)
 	const [sidebarOpen, setSidebarOpen] = useState(false)
 	const [filterOpen, setFilterOpen] = useState(false)
 	const [activeDayISO, setActiveDayISO] = useState<string>('')
 	const [activeStatus, setActiveStatus] = useState<'' | Notification['status']>('')
+	const [isLoading, setIsLoading] = useState(false)
+
+	useEffect(() => {
+		let isMounted = true
+
+		const fetchNotifications = async () => {
+			setIsLoading(true)
+			try {
+				const res = await axios.get<NotificationsResponse>('http://localhost:3000/api/notifications')
+				if (!isMounted) return
+				const { days: mappedDays, devices } = mapNotificationsToDayGroups(res.data?.data || {})
+				if (mappedDays.length) setDays(mappedDays)
+				const newTabs = ['All Devices', ...devices]
+				setTabs(newTabs)
+				setActiveTab((current) => (newTabs.includes(current) ? current : 'All Devices'))
+			} catch (error) {
+				console.error('Failed to fetch notifications', error)
+			} finally {
+				if (isMounted) setIsLoading(false)
+			}
+		}
+
+		fetchNotifications()
+		const intervalId = setInterval(fetchNotifications, 30000)
+
+		return () => {
+			isMounted = false
+			clearInterval(intervalId)
+		}
+	}, [])
 
 	const filteredDays = useMemo(() => {
 		return days
@@ -170,9 +292,14 @@ export default function Riwayat() {
 					const matchStatus = activeStatus === '' || item.status === activeStatus
 					return matchDevice && matchStatus
 				}),
+				total: day.items.filter((item) => {
+					const matchDevice = activeTab === 'All Devices' || item.device === activeTab
+					const matchStatus = activeStatus === '' || item.status === activeStatus
+					return matchDevice && matchStatus
+				}).length,
 			}))
 			.filter((day) => day.items.length > 0)
-	}, [activeTab, activeDayISO, activeStatus])
+	}, [activeTab, activeDayISO, activeStatus, days])
 
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
@@ -266,6 +393,8 @@ export default function Riwayat() {
 									)}
 								</div>
 							</header>
+
+										{isLoading && <p className="text-xs text-slate-500">Memuat notifikasi...</p>}
 
 							<div className="space-y-6 sm:space-y-8">
 								{filteredDays.length === 0 ? (

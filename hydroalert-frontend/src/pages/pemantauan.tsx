@@ -1,6 +1,24 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import axios from 'axios'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
+
+type LocationValue = string | { latitude?: number; longitude?: number } | undefined
+
+type MonitoringDeviceAPI = {
+	deviceID?: string
+	location?: LocationValue
+	lastActive?: string
+	water?: { level?: number; status?: string; updatedAt?: string }
+	wind?: { speed?: number }
+	rain?: { intensity?: number }
+}
+
+type MonitoringResponse = {
+	success: boolean
+	stats?: { totalDevices?: number; activeDevices?: number }
+	devices?: MonitoringDeviceAPI[]
+}
 
 type DeviceMetric = {
 	label: string
@@ -34,7 +52,9 @@ type Notification = {
 	time: string
 }
 
-const devices: Device[] = [
+const placeholderImage = 'https://images.unsplash.com/photo-1505760427687-7fdb6f0a68c4?auto=format&fit=crop&w=900&q=80'
+
+const fallbackDevices: Device[] = [
 	{
 		id: 'device-a',
 		name: 'Device A',
@@ -66,7 +86,7 @@ const devices: Device[] = [
 		cameraTime: '15.33.43',
 		location: 'Sungai Pengakan, Bali',
 		coordinates: '-8.3726, 115.1923',
-		cameraImage: 'https://images.unsplash.com/photo-1505760427687-7fdb6f0a68c4?auto=format&fit=crop&w=900&q=80',
+		cameraImage: placeholderImage,
 	},
 	{
 		id: 'device-b',
@@ -99,7 +119,7 @@ const devices: Device[] = [
 		cameraTime: '15.28.10',
 		location: 'Sungai Wos, Bali',
 		coordinates: '-8.5095, 115.2651',
-		cameraImage: 'https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=900&q=80',
+		cameraImage: placeholderImage,
 	},
 	{
 		id: 'device-c',
@@ -132,7 +152,7 @@ const devices: Device[] = [
 		cameraTime: '15.40.12',
 		location: 'Sungai Ayung, Bali',
 		coordinates: '-8.5480, 115.2625',
-		cameraImage: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80',
+		cameraImage: placeholderImage,
 	},
 ]
 
@@ -151,11 +171,127 @@ const notifications: Notification[] = [
 	},
 ]
 
+const normalizeStatus = (status?: string): Device['status'] => {
+	const normalized = (status || '').toLowerCase()
+	if (normalized === 'warning' || normalized === 'bahaya' || normalized === 'waspada') return 'Warning'
+	return 'Normal'
+}
+
+const formatTime = (iso?: string) => {
+	if (!iso) return '-'
+	const date = new Date(iso)
+	return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+}
+
+const formatAgo = (iso?: string) => {
+	if (!iso) return '-'
+	const now = Date.now()
+	const past = new Date(iso).getTime()
+	const diffMs = now - past
+	const minutes = Math.floor(diffMs / 60000)
+	if (minutes < 1) return 'baru saja'
+	if (minutes < 60) return `${minutes} menit lalu`
+	const hours = Math.floor(minutes / 60)
+	if (hours < 24) return `${hours} jam lalu`
+	const days = Math.floor(hours / 24)
+	return `${days} hari lalu`
+}
+
+const scaleFill = (value: number, max = 100) => Math.min(100, Math.round(((value || 0) / max) * 100))
+
+const formatLocation = (location: LocationValue): { location: string; coordinates: string } => {
+	if (typeof location === 'string' && location.trim().length) {
+		return { location, coordinates: '-' }
+	}
+	if (location && typeof location === 'object') {
+		const { latitude, longitude } = location
+		if (typeof latitude === 'number' && typeof longitude === 'number') {
+			return {
+				location: `Lat ${latitude.toFixed(4)}, Lon ${longitude.toFixed(4)}`,
+				coordinates: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+			}
+		}
+	}
+	return { location: 'Lokasi tidak diketahui', coordinates: '-' }
+}
+
+const mapMonitoringDevices = (payload: MonitoringDeviceAPI[]): Device[] => {
+	return payload.map((device) => {
+		const status = normalizeStatus(device.water?.status)
+		const updatedAt = device.water?.updatedAt || device.lastActive
+		const { location, coordinates } = formatLocation(device.location)
+		return {
+			id: device.deviceID || 'unknown-device',
+			name: device.deviceID || 'Perangkat',
+			heroLabel: 'Ketinggian Air Sungai',
+			heroValue: device.water?.level ?? 0,
+			heroUnit: 'cm',
+			status,
+			updatedAt: formatTime(updatedAt),
+			metrics: [
+				{
+					label: 'Kecepatan Angin',
+					value: device.wind?.speed ?? 0,
+					unit: 'km/jam',
+					status,
+					scaleFill: scaleFill(device.wind?.speed ?? 0, 60),
+					trend: '',
+					detail: `Terakhir aktif ${formatAgo(device.lastActive)}`,
+				},
+				{
+					label: 'Debit Air Hujan',
+					value: device.rain?.intensity ?? 0,
+					unit: 'mm/jam',
+					status,
+					scaleFill: scaleFill(device.rain?.intensity ?? 0, 80),
+					trend: '',
+					detail: `Diperbarui ${formatAgo(device.water?.updatedAt)}`,
+				},
+			],
+			cameraTime: formatTime(device.lastActive),
+			location,
+			coordinates,
+			cameraImage: placeholderImage,
+		}
+	})
+}
+
 export default function Pemantauan() {
-	const [activeDeviceId, setActiveDeviceId] = useState<string>(devices[0].id)
+	const [devices, setDevices] = useState<Device[]>(fallbackDevices)
+	const [activeDeviceId, setActiveDeviceId] = useState<string>(fallbackDevices[0].id)
+	const [, setIsLoading] = useState(false)
 	const [sidebarOpen, setSidebarOpen] = useState(false)
 
-	const activeDevice = useMemo(() => devices.find((device) => device.id === activeDeviceId) ?? devices[0], [activeDeviceId])
+	useEffect(() => {
+		let isMounted = true
+
+		const fetchMonitoring = async () => {
+			setIsLoading(true)
+			try {
+				const res = await axios.get<MonitoringResponse>('http://localhost:3000/api/monitoring')
+				if (!isMounted) return
+				const mapped = mapMonitoringDevices(res.data?.devices || [])
+				if (mapped.length) {
+					setDevices(mapped)
+					setActiveDeviceId((current) => (mapped.some((item) => item.id === current) ? current : mapped[0].id))
+				}
+			} catch (error) {
+				console.error('Failed to fetch monitoring data', error)
+			} finally {
+				if (isMounted) setIsLoading(false)
+			}
+		}
+
+		fetchMonitoring()
+		const intervalId = setInterval(fetchMonitoring, 30000)
+
+		return () => {
+			isMounted = false
+			clearInterval(intervalId)
+		}
+	}, [])
+
+	const activeDevice = useMemo(() => devices.find((device) => device.id === activeDeviceId) ?? devices[0], [activeDeviceId, devices])
 
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
