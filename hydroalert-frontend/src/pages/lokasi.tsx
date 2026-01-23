@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
 
@@ -38,26 +39,28 @@ const sensors: Sensor[] = [
 ]
 
 export default function Lokasi() {
+	const [sidebarOpen, setSidebarOpen] = useState(false)
+
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
-			<Navbar />
+			<Navbar onMenuToggle={() => setSidebarOpen((prev) => !prev)} isMenuOpen={sidebarOpen} />
 
 			<div className="flex flex-1">
-				<Sidebar />
+				<Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
 				<div className="flex-1 flex flex-col">
-					<main className="flex-1 p-8">
-						<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6">
-							<header className="flex items-center justify-between">
+					<main className="flex-1 p-4 sm:p-6 lg:p-8">
+						<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 sm:p-6 space-y-5 sm:space-y-6">
+							<header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 								<div>
-									<p className="text-xl font-semibold text-slate-800">Lokasi Perangkat</p>
-									<p className="text-sm text-slate-500">Peta lokasi sensor sungai dan status terkini</p>
+									<p className="text-lg sm:text-xl font-semibold text-slate-800">Lokasi Perangkat</p>
+									<p className="text-xs sm:text-sm text-slate-500">Peta lokasi sensor sungai dan status terkini</p>
 								</div>
 							</header>
 
-							<div className="grid gap-6 xl:grid-cols-3">
+							<div className="grid gap-5 sm:gap-6 xl:grid-cols-3">
 								<div className="xl:col-span-2 rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden">
-									<div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+									<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 sm:px-5 py-4 border-b border-slate-100">
 										<div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
 											<span className="h-8 w-8 rounded-full bg-cyan-500 text-white grid place-items-center text-lg font-bold">📍</span>
 											<span>Peta Lokasi Sensor</span>
@@ -92,10 +95,10 @@ export default function Lokasi() {
 									</div>
 								</div>
 
-								<div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5 flex flex-col gap-4">
+								<div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
 									<div className="flex items-center justify-between">
-										<p className="text-base font-semibold text-slate-800">Daftar Sensor</p>
-										<span className="text-xs text-slate-500">Diperbarui 2 menit lalu</span>
+										<p className="text-sm sm:text-base font-semibold text-slate-800">Daftar Sensor</p>
+										<span className="text-[11px] sm:text-xs text-slate-500">Diperbarui 2 menit lalu</span>
 									</div>
 
 									<div className="space-y-3">
@@ -108,13 +111,13 @@ export default function Lokasi() {
 														isNormal ? 'border-emerald-200' : 'border-amber-200'
 													}`}
 												>
-													<div className="flex items-start justify-between">
+													<div className="flex items-start justify-between gap-3">
 														<div>
 															<p className="text-sm font-semibold text-slate-800">{sensor.name}</p>
 															<p className="text-xs text-slate-500">{sensor.location}</p>
 														</div>
 														<span
-															className={`text-[11px] font-semibold px-3 py-1 rounded-full ${
+															className={`text-[10px] sm:text-[11px] font-semibold px-3 py-1 rounded-full ${
 																isNormal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
 															}`}
 														>
@@ -122,12 +125,12 @@ export default function Lokasi() {
 														</span>
 													</div>
 
-												<div className="rounded-xl bg-linear-to-r from-sky-500 to-blue-600 text-white px-4 py-3 flex items-center justify-between">
+												<div className="rounded-xl bg-linear-to-r from-sky-500 to-blue-600 text-white px-3 sm:px-4 py-3 flex items-center justify-between">
 													<div>
 														<p className="text-xs uppercase tracking-[0.18em] text-white/80">Ketinggian Air</p>
 														<div className="flex items-end gap-2">
-															<span className="text-4xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.25)]">{sensor.waterLevel}</span>
-															<span className="text-lg font-semibold">{sensor.unit}</span>
+															<span className="text-3xl sm:text-4xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.25)]">{sensor.waterLevel}</span>
+															<span className="text-base sm:text-lg font-semibold">{sensor.unit}</span>
 														</div>
 													</div>
 												</div>

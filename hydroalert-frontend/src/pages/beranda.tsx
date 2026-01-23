@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
 
@@ -36,23 +37,25 @@ const sensors = [
 ]
 
 function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
-      <Navbar />
+      <Navbar onMenuToggle={() => setSidebarOpen((prev) => !prev)} isMenuOpen={sidebarOpen} />
 
       <div className="flex flex-1">
-        <Sidebar />
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex-1 flex flex-col">
-          <main className="flex-1 p-8 space-y-6">
-            <header className="flex items-center justify-between">
+          <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
+            <header className="flex items-center justify-between flex-wrap gap-2 sm:flex-nowrap sm:gap-3">
               <div className="space-y-1">
-                <p className="text-lg font-semibold text-slate-800">Ketinggian Air yang Patut Diwaspadai</p>
+                <p className="text-sm sm:text-lg font-semibold text-slate-800 whitespace-nowrap">Ketinggian Air yang Patut Diwaspadai</p>
               </div>
-              <div className="text-lg font-semibold text-slate-800">Perangkat A</div>
+              <div className="text-sm sm:text-lg font-semibold text-slate-800 whitespace-nowrap">Perangkat A</div>
             </header>
 
-          <section className="grid gap-6">
+          <section className="grid gap-4 sm:gap-5 lg:gap-6">
             <div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 min-h-[260px]">
               <div className="relative z-10 p-6 pt-7 flex flex-wrap items-center justify-between gap-4">
                 <div className="space-y-2 self-start">
@@ -89,8 +92,8 @@ function App() {
               <p className="absolute bottom-3 left-6 z-10 text-xs text-white">Terakhir diperbaharui: 10.00</p>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5 flex flex-col gap-4">
+            <div className="grid gap-4 sm:gap-5 lg:gap-6 lg:grid-cols-2">
+              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm text-slate-500">Kecepatan Angin</p>
@@ -112,7 +115,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5 flex flex-col gap-4">
+              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm text-slate-500">Debit Air Hujan</p>
@@ -135,8 +138,8 @@ function App() {
               </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5 flex flex-col gap-4 min-h-[280px]">
+            <div className="grid gap-4 sm:gap-5 lg:gap-6 lg:grid-cols-2">
+              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4 min-h-[280px]">
                 <div className="flex items-start justify-between">
                   <div className="space-y-7">
                     <p className="text-sm text-slate-500">Jumlah Alat Aktif</p>
@@ -179,7 +182,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5 space-y-3">
+              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-slate-800">Notifikasi Terkini</p>
                   <span className="h-8 w-8 rounded-full bg-slate-900 text-white grid place-items-center text-sm font-semibold">

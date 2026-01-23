@@ -90,6 +90,42 @@ const days: DayGroup[] = [
 	},
 ]
 
+const statusOptions: Array<Notification['status']> = ['normal', 'warning', 'info']
+
+const monthIndex: Record<string, number> = {}
+const monthNames: Array<Array<string>> = [
+	['january', 'januari'],
+	['february', 'februari'],
+	['march', 'maret'],
+	['april'],
+	['may', 'mei'],
+	['june', 'juni'],
+	['july', 'juli'],
+	['august', 'agustus'],
+	['september'],
+	['october', 'oktober'],
+	['november'],
+	['december', 'desember'],
+]
+
+monthNames.forEach((names, idx) => {
+	names.forEach((name) => {
+		monthIndex[name] = idx
+	})
+})
+
+function formatDateISO(dateStr: string) {
+	const parts = dateStr.trim().split(/\s+/)
+	if (parts.length !== 3) return null
+	const [dayStr, monthStrRaw, yearStr] = parts
+	const dayNum = Number.parseInt(dayStr, 10)
+	const monthIdx = monthIndex[monthStrRaw.toLowerCase()]
+	const yearNum = Number.parseInt(yearStr, 10)
+	if (Number.isNaN(dayNum) || Number.isNaN(monthIdx) || Number.isNaN(yearNum)) return null
+	const utcDate = new Date(Date.UTC(yearNum, monthIdx, dayNum))
+	return utcDate.toISOString().slice(0, 10)
+}
+
 function statusClasses(status: Notification['status']) {
 	switch (status) {
 		case 'warning':
@@ -115,113 +151,177 @@ function statusClasses(status: Notification['status']) {
 
 export default function Riwayat() {
 	const [activeTab, setActiveTab] = useState<string>(tabs[0])
+	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const [filterOpen, setFilterOpen] = useState(false)
+	const [activeDayISO, setActiveDayISO] = useState<string>('')
+	const [activeStatus, setActiveStatus] = useState<'' | Notification['status']>('')
 
 	const filteredDays = useMemo(() => {
-		if (activeTab === 'All Devices') return days
-
 		return days
+			.filter((day) => {
+				if (!activeDayISO) return true
+				const iso = formatDateISO(day.date)
+				return iso === activeDayISO
+			})
 			.map((day) => ({
 				...day,
-				items: day.items.filter((item) => item.device === activeTab),
+				items: day.items.filter((item) => {
+					const matchDevice = activeTab === 'All Devices' || item.device === activeTab
+					const matchStatus = activeStatus === '' || item.status === activeStatus
+					return matchDevice && matchStatus
+				}),
 			}))
 			.filter((day) => day.items.length > 0)
-	}, [activeTab])
+	}, [activeTab, activeDayISO, activeStatus])
 
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
-			<Navbar />
+			<Navbar onMenuToggle={() => setSidebarOpen((prev) => !prev)} isMenuOpen={sidebarOpen} />
 
 			<div className="flex flex-1">
-				<Sidebar />
+				<Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
 				<div className="flex-1 flex flex-col">
-					<main className="flex-1 p-8">
-						<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6">
-							<header className="flex items-center justify-between">
-								<p className="text-xl font-semibold text-slate-800">Riwayat Notifikasi</p>
-								<button className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
-									<span className="text-base">⚲</span>
-									Filter
-								</button>
+					<main className="flex-1 p-4 sm:p-6 lg:p-8">
+						<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 sm:p-6 space-y-5 sm:space-y-6">
+							<header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+								<p className="text-lg sm:text-xl font-semibold text-slate-800">Riwayat Notifikasi</p>
+								<div className="relative self-end sm:self-auto">
+									<button
+										onClick={() => setFilterOpen((prev) => !prev)}
+										type="button"
+										aria-expanded={filterOpen}
+										className="flex items-center gap-2 rounded-full border border-slate-200 px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-600 hover:bg-slate-50"
+									>
+										<span className="text-base" aria-hidden>
+											⚲
+										</span>
+										<span className="inline sm:inline">Filter</span>
+									</button>
+
+									{filterOpen && (
+										<div className="absolute right-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white shadow-lg shadow-slate-200/70 z-50 p-3 space-y-3 text-sm text-slate-700">
+											<div className="space-y-1">
+												<label className="px-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">Device</label>
+												<select
+													className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-700 bg-white"
+													value={activeTab}
+													onChange={(e) => {
+														setActiveTab(e.target.value)
+													}}
+												>
+													{tabs.map((tab) => (
+														<option key={`opt-${tab}`} value={tab}>
+															{tab}
+														</option>
+													))}
+												</select>
+											</div>
+
+											<div className="space-y-1">
+												<label className="px-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">Hari</label>
+												<input
+													type="date"
+													className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-700 bg-white"
+													value={activeDayISO}
+													onChange={(e) => {
+														setActiveDayISO(e.target.value)
+													}}
+												/>
+											</div>
+
+											<div className="space-y-1">
+												<label className="px-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">Status</label>
+												<select
+													className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-700 bg-white"
+													value={activeStatus}
+													onChange={(e) => {
+														setActiveStatus(e.target.value as '' | Notification['status'])
+													}}
+												>
+													<option value="">All Status</option>
+													{statusOptions.map((status) => (
+														<option key={`opt-status-${status}`} value={status}>
+															{status}
+														</option>
+													))}
+												</select>
+											</div>
+
+											<div className="flex items-center justify-end gap-2 pt-1">
+												<button
+													type="button"
+													className="text-xs text-slate-500 hover:text-slate-700"
+													onClick={() => {
+														setActiveTab(tabs[0])
+														setActiveDayISO('')
+														setActiveStatus('')
+														setFilterOpen(false)
+													}}
+												>
+													Reset
+												</button>
+											</div>
+										</div>
+									)}
+								</div>
 							</header>
 
-							<div className="flex flex-wrap items-center gap-3">
-								{tabs.map((tab) => {
-									const isActive = tab === activeTab
-									return (
-										<button
-											key={tab}
-											onClick={() => setActiveTab(tab)}
-											aria-pressed={isActive}
-											className={`group relative overflow-hidden rounded-xl px-4 py-2 text-sm font-semibold border transition flex items-center gap-2 ${
-												isActive
-													? 'text-white border-sky-300 shadow-lg shadow-sky-200/60'
-													: 'text-slate-500 border-slate-200 hover:text-slate-700 hover:shadow-sm'
-											}`}
-											style={isActive ? { background: 'linear-gradient(135deg, #0ea5e9 0%, #22c55e 60%, #0ea5e9 100%)', boxShadow: '0 12px 36px rgba(14,165,233,0.35)' } : undefined}
-										>
-											<span className={`h-2 w-2 rounded-full transition ${isActive ? 'bg-white shadow-[0_0_0_4px_rgba(255,255,255,0.18)]' : 'bg-slate-300 group-hover:bg-slate-400'}`} />
-											<span className="relative z-10">{tab}</span>
-											<span
-												className={`absolute inset-0 bg-gradient-to-r from-white/10 via-white/20 to-white/10 opacity-0 group-hover:opacity-100 transition ${
-													isActive ? 'opacity-100' : ''
-												}`}
-												aria-hidden
-											/>
-										</button>
-									)
-								})}
-							</div>
-
-							<div className="space-y-8">
-								{filteredDays.map((day) => (
-									<div key={day.date} className="space-y-3">
-										<div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-											<span className="text-sky-600">◉</span>
-											{day.date}
-											<span className="ml-auto text-xs font-normal text-slate-500">{day.total} notifikasi</span>
-										</div>
-
-										<div className="space-y-3">
-											{day.items.map((item) => {
-												const styles = statusClasses(item.status)
-												return (
-													<div
-														key={`${day.date}-${item.title}-${item.time}`}
-														className={`rounded-2xl border bg-white px-4 py-3 shadow-sm ${styles.border}`}
-													>
-														<div className="flex items-start justify-between gap-3">
-															<div className="flex items-start gap-3">
-																<span className={`mt-0.5 h-7 w-7 rounded-full border grid place-items-center text-sm font-semibold ${styles.icon}`}>
-																	{item.status === 'warning' ? '⚠' : item.status === 'info' ? 'ℹ' : '✓'}
-																</span>
-																<div className="space-y-0.5">
-																	<p className="text-sm font-semibold text-slate-800">{item.title}</p>
-																	<p className="text-xs text-slate-500">{item.device}</p>
-																	<p className="text-xs text-slate-600">{item.description}</p>
-																</div>
-															</div>
-															<span className={`text-[11px] font-semibold px-3 py-1 rounded-full ${styles.badge}`}>{item.ago}</span>
-														</div>
-														<div className="mt-2 text-xs text-slate-500">{item.time}</div>
-													</div>
-												)
-											})}
-										</div>
+							<div className="space-y-6 sm:space-y-8">
+								{filteredDays.length === 0 ? (
+									<div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+										Tidak ada informasi
 									</div>
-								))}
+								) : (
+									filteredDays.map((day) => (
+										<div key={day.date} className="space-y-3">
+											<div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+												<span className="text-sky-600">◉</span>
+												{day.date}
+												<span className="ml-auto text-[11px] sm:text-xs font-normal text-slate-500">{day.total} notifikasi</span>
+											</div>
+
+											<div className="space-y-3">
+												{day.items.map((item) => {
+													const styles = statusClasses(item.status)
+													return (
+														<div
+															key={`${day.date}-${item.title}-${item.time}`}
+															className={`rounded-2xl border bg-white px-4 py-3 shadow-sm ${styles.border}`}
+														>
+															<div className="flex items-start justify-between gap-3">
+																<div className="flex items-start gap-3">
+																	<span className={`mt-0.5 h-7 w-7 rounded-full border grid place-items-center text-sm font-semibold ${styles.icon}`}>
+																		{item.status === 'warning' ? '⚠' : item.status === 'info' ? 'ℹ' : '✓'}
+																	</span>
+																	<div className="space-y-0.5">
+																		<p className="text-sm font-semibold text-slate-800">{item.title}</p>
+																		<p className="text-xs text-slate-500">{item.device}</p>
+																		<p className="text-xs text-slate-600">{item.description}</p>
+																	</div>
+																</div>
+																<span className={`text-[10px] sm:text-[11px] font-semibold px-3 py-1 rounded-full ${styles.badge}`}>{item.ago}</span>
+															</div>
+															<div className="mt-2 text-[11px] sm:text-xs text-slate-500">{item.time}</div>
+														</div>
+													)
+												})}
+											</div>
+										</div>
+									))
+								)}
 							</div>
 						</div>
-					</main>
+						</main>
 
-					<footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/60 px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
-						<a className="hover:text-slate-700" href="#">
-							About HydroAlert
-						</a>
-						<a className="hover:text-slate-700" href="#">
-							Contact Us
-						</a>
-					</footer>
+						<footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/60 px-4 sm:px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
+							<a className="hover:text-slate-700" href="#">
+								About HydroAlert
+							</a>
+							<a className="hover:text-slate-700" href="#">
+								Contact Us
+							</a>
+						</footer>
 				</div>
 			</div>
 		</div>

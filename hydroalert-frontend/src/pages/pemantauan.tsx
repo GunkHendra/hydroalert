@@ -153,20 +153,21 @@ const notifications: Notification[] = [
 
 export default function Pemantauan() {
 	const [activeDeviceId, setActiveDeviceId] = useState<string>(devices[0].id)
+	const [sidebarOpen, setSidebarOpen] = useState(false)
 
 	const activeDevice = useMemo(() => devices.find((device) => device.id === activeDeviceId) ?? devices[0], [activeDeviceId])
 
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
-            <Navbar />
+			<Navbar onMenuToggle={() => setSidebarOpen((prev) => !prev)} isMenuOpen={sidebarOpen} />
 
 			<div className="flex flex-1">
-				<Sidebar />
+				<Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
 				<div className="flex-1 flex flex-col">
-					<main className="flex-1 p-8">
-						<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6">
-							<div className="flex items-center gap-3">
+					<main className="flex-1 p-4 sm:p-6 lg:p-8">
+						<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 sm:p-6 space-y-5 sm:space-y-6">
+							<div className="flex flex-wrap items-center gap-2 sm:gap-3">
 								{devices.map((device) => {
 									const isActive = device.id === activeDevice.id
 
@@ -175,7 +176,7 @@ export default function Pemantauan() {
 											key={device.id}
 											onClick={() => setActiveDeviceId(device.id)}
 											aria-pressed={isActive}
-											className={`group relative overflow-hidden rounded-xl px-4 py-2 text-sm font-semibold border border-b-0 transition flex items-center gap-2 ${
+											className={`group relative overflow-hidden rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold border border-b-0 transition flex items-center gap-2 ${
 												isActive
 													? 'text-white border-sky-300 shadow-lg shadow-sky-200/60'
 													: 'text-slate-500 border-slate-200 hover:text-slate-700 hover:shadow-sm'
@@ -201,25 +202,25 @@ export default function Pemantauan() {
 								})}
 						</div>
 
-						<div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 min-h-[230px]">
-							<div className="relative z-10 p-6 pt-7 flex flex-wrap items-start justify-between gap-4">
+						<div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 min-h-[220px]">
+							<div className="relative z-10 p-4 sm:p-6 pt-7 flex flex-wrap items-start justify-between gap-4">
 								<div className="space-y-2">
 									<p className="text-sm font-semibold text-slate-800">{activeDevice.heroLabel}</p>
 									<div className="flex items-end gap-3">
-										<span className="text-5xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.2)]">{activeDevice.heroValue}</span>
-										<span className="text-xl font-semibold text-slate-700">{activeDevice.heroUnit}</span>
+										<span className="text-3xl sm:text-5xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.2)]">{activeDevice.heroValue}</span>
+										<span className="text-base sm:text-xl font-semibold text-slate-700">{activeDevice.heroUnit}</span>
 									</div>
 								</div>
 
 								<div className="flex-1 flex justify-end self-center">
 									<div
-										className={`flex items-center gap-3 px-6 py-3 rounded-full shadow-lg border ${
+										className={`flex items-center gap-3 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full shadow-lg border ${
 											activeDevice.status === 'Normal'
 												? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-emerald-600/30 border-emerald-100'
 												: 'bg-gradient-to-r from-amber-400 to-orange-500 shadow-amber-500/30 border-amber-100'
 										}`}
 									>
-										<span className="text-base font-black uppercase tracking-[0.18em] text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
+										<span className="text-sm sm:text-base font-black uppercase tracking-[0.18em] text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
 											{activeDevice.status}
 										</span>
 									</div>
@@ -236,9 +237,9 @@ export default function Pemantauan() {
 							<p className="absolute bottom-3 left-6 z-10 text-xs text-white">Terakhir diperbaharui: {activeDevice.updatedAt}</p>
 						</div>
 
-						<div className="grid gap-6 lg:grid-cols-2">
+						<div className="grid gap-4 sm:gap-5 lg:gap-6 lg:grid-cols-2">
 							{activeDevice.metrics.map((metric) => (
-								<div key={metric.label} className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5 flex flex-col gap-4">
+								<div key={metric.label} className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
 									<div className="flex items-start justify-between">
 										<div>
 											<p className="text-sm text-slate-500">{metric.label}</p>
@@ -271,7 +272,7 @@ export default function Pemantauan() {
 							))}
 						</div>
 
-						<div className="grid gap-6 xl:grid-cols-3">
+						<div className="grid gap-4 sm:gap-5 lg:gap-6 xl:grid-cols-3">
 							<div className="xl:col-span-2 rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden">
 								<div className="flex items-center justify-between px-4 py-3 bg-sky-500 text-white text-sm font-semibold">
 									<div className="flex items-center gap-2">
@@ -306,67 +307,10 @@ export default function Pemantauan() {
 								</div>
 							</div>
 						</div>
-
-						<div className="grid gap-6 lg:grid-cols-3">
-							<div className="lg:col-span-2 rounded-2xl bg-white shadow-sm border border-slate-200 p-5">
-								<div className="flex items-center justify-between mb-4">
-									<div>
-										<p className="text-sm font-semibold text-slate-800">Log Notifikasi</p>
-										<p className="text-xs text-slate-500">Riwayat terbaru dari perangkat</p>
-									</div>
-									<button className="text-xs font-semibold text-sky-600 hover:text-sky-700">Lihat semua</button>
-								</div>
-								<div className="space-y-3">
-									{notifications.map((notif) => (
-										<div
-											key={notif.title}
-											className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
-										>
-											<span
-												className={`mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
-													notif.status === 'normal' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-												}`}
-											>
-												{notif.status === 'normal' ? 'OK' : '!'}
-											</span>
-											<div className="flex-1">
-												<p className="text-sm font-semibold text-slate-800">{notif.title}</p>
-												<p className="text-xs text-slate-500">{notif.description}</p>
-											</div>
-											<span className="text-xs text-slate-400">{notif.time}</span>
-										</div>
-									))}
-								</div>
-							</div>
-
-							<div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-5">
-								<div className="flex items-center justify-between mb-4">
-									<p className="text-sm font-semibold text-slate-800">Kinerja Perangkat</p>
-									<span className="text-xs text-slate-500">Realtime</span>
-								</div>
-								<div className="space-y-3">
-									{devices.map((device) => (
-										<div key={device.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
-											<div>
-												<p className="text-sm font-semibold text-slate-800">{device.name}</p>
-												<p className="text-xs text-slate-500">Status: {device.status}</p>
-											</div>
-											<span
-												className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-													device.status === 'Normal' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-												}`}
-											>
-												{device.status}
-											</span>
-										</div>
-									))}
-								</div>
-							</div>
-						</div>
-						</div>
+					</div>
 					</main>
 
-					<footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
+					<footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-4 sm:px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
 						<a className="hover:text-slate-700" href="#">
 							About HydroAlert
 						</a>
