@@ -36,8 +36,47 @@ const io = new Server(server, {
   }
 });
 
+app.set('socketio', io);
+
+io.on('connection', (socket) => {
+  console.log(`[Socket] User Connected: ${socket.id}`);
+
+  // Channel Management
+  // Dashboard
+  socket.on('join_dashboard', () => {
+    socket.join('dashboard');
+    console.log(`[Socket] User ${socket.id} joined the Dashboard room`);
+  });
+
+  socket.on('leave_dashboard', () => {
+    socket.leave('dashboard');
+    console.log(`[Socket] User ${socket.id} left the Dashboard room`);
+  });
+
+  // Sensor Data and Image per Device
+  socket.on('join_device', (deviceID) => {
+    socket.join(deviceID);
+    console.log(`[Socket] User ${socket.id} joined channel: ${deviceID}`);
+  });
+
+  socket.on('leave_device', (deviceID) => {
+    socket.leave(deviceID);
+    console.log(`[Socket] User ${socket.id} left channel: ${deviceID}`);
+  });
+
+  // Notification
+  socket.on('join_notifications', () => {
+    socket.join('notifications');
+    console.log(`[Socket] User ${socket.id} joined the Notifications room`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('[Socket] User Disconnected');
+  });
+});
+
 // Database Connection
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongo:27017/flood_alert_db';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/flood_alert_db';
 mongoose.connect(MONGO_URI)
   .then(() => console.log('MongoDB Connected to:', MONGO_URI))
   .catch(err => console.error('MongoDB Connection Error:', err));

@@ -18,32 +18,44 @@ import { getWaterStatus } from '../utils/statusHelper.js';
  *             schema:
  *               type: object
  *               properties:
- *                 success: { type: boolean }
+ *                 success:
+ *                   type: boolean
  *                 data:
  *                   type: object
  *                   properties:
+ *                     deviceID:
+ *                       type: string
  *                     water:
  *                       type: object
  *                       properties:
- *                         level: { type: number }
- *                         status: { type: string }
- *                         updatedAt: { type: string, format: date-time }
+ *                         level:
+ *                           type: number
+ *                         status:
+ *                           type: string
+ *                         updatedAt:
+ *                           type: string
+ *                           format: date-time
  *                     wind:
  *                       type: object
  *                       properties:
- *                         speed: { type: number }
+ *                         speed:
+ *                           type: number
  *                     rain:
  *                       type: object
  *                       properties:
- *                         intensity: { type: number }
+ *                         intensity:
+ *                           type: number
  *                     devices:
  *                       type: object
  *                       properties:
- *                         total: { type: integer }
- *                         active: { type: integer }
+ *                         total:
+ *                           type: integer
+ *                         active:
+ *                           type: integer
  *                     notifications:
  *                       type: array
- *                       items: { type: object }
+ *                       items:
+ *                         type: object
  */
 export const getDashboardData = async (req, res) => {
     try {
@@ -87,6 +99,7 @@ export const getDashboardData = async (req, res) => {
         res.json({
             success: true,
             data: {
+                deviceID: worstData.deviceID,
                 water: {
                     level: worstData.waterLevel,
                     status: waterStatus,
@@ -154,6 +167,7 @@ export const getDashboardData = async (req, res) => {
  *                         type: object
  *                         properties:
  *                           intensity: { type: number }
+ *                       imageUrl: { type: string }
  */
 export const getMonitoringData = async (req, res) => {
     try {
@@ -177,6 +191,14 @@ export const getMonitoringData = async (req, res) => {
                 },
                 { $unwind: '$deviceDetails' },
                 {
+                    $lookup: {
+                        from: 'deviceimages',
+                        localField: '_id',
+                        foreignField: 'deviceID',
+                        as: 'imageDetails'
+                    }
+                },
+                {
                     $project: {
                         _id: 0,
                         deviceID: '$_id',
@@ -188,7 +210,8 @@ export const getMonitoringData = async (req, res) => {
                             updatedAt: '$latestReading.createdAt'
                         },
                         wind: { speed: '$latestReading.windSpeed' },
-                        rain: { intensity: '$latestReading.rainIntensity' }
+                        rain: { intensity: '$latestReading.rainIntensity' },
+                        imageUrl: { $arrayElemAt: ['$imageDetails.imageUrl', 0] }
                     }
                 }
             ]),
