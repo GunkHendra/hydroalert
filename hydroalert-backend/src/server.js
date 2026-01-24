@@ -30,12 +30,17 @@ app.use(cors({
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "http://localhost:5000" }
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
 });
 
 // Database Connection
-mongoose.connect('mongodb://localhost:27017/flood_alert_db')
-  .then(() => console.log('MongoDB Connected'));
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongo:27017/flood_alert_db';
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('MongoDB Connected to:', MONGO_URI))
+  .catch(err => console.error('MongoDB Connection Error:', err));
 
 // Swagger Setup
 const swaggerOptions = {
@@ -46,7 +51,10 @@ const swaggerOptions = {
       version: '1.0.0',
       description: 'API for monitoring water levels, managing IoT devices, and alerts.',
     },
-    servers: [{ url: 'http://localhost:5000' }],
+    servers: [
+      { url: 'https://hydroalert.my.id' }, // Production
+      { url: 'http://localhost:5000' }     // Local
+    ],
   },
   apis: ['./src/controllers/*.js'], // This points to your controllers
 };
