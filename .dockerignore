@@ -3,4 +3,4 @@ node_modules
 .env
 .dockerignore
 DockerFiles
-docker-compose.yml
+compose.yaml

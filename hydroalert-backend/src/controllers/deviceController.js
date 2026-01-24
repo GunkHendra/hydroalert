@@ -34,6 +34,11 @@ import { sendTelegramAlert } from '../services/telegramService.js';
  */
 export const registerDevice = async (req, res) => {
     const { deviceID, lat, long } = req.body;
+
+    if (!deviceID || lat === undefined || long === undefined) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
     const io = req.app.get('socketio'); // Retrieve io instance
 
     try {
@@ -90,6 +95,11 @@ export const registerDevice = async (req, res) => {
  */
 export const storeSensorData = async (req, res) => {
     const { deviceID, rainIntensity, waterLevel, windSpeed } = req.body;
+
+    if (!deviceID || waterLevel === undefined || rainIntensity === undefined || windSpeed === undefined) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
     const io = req.app.get('socketio'); // Retrieve io instance
 
     try {
@@ -285,6 +295,16 @@ const handleNotification = async (req, deviceID, status, level) => {
 
 export const uploadImage = async (req, res) => {
     const { deviceID } = req.body;
+
+    if (!deviceID) {
+        return res.status(400).json({ error: 'deviceID is required in the form data' });
+    }
+
+    const device = await Device.findOne({ deviceID });
+    if (!device) {
+        return res.status(404).json({ error: 'Device not found' });
+    }
+
     const io = req.app.get('socketio'); // Retrieve io instance
 
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });

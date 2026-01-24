@@ -64,12 +64,26 @@ export const getDashboardData = async (req, res) => {
             { $sort: { createdAt: -1 } },
             {
                 $group: {
-                    _id: '$device',
+                    _id: '$deviceID',
                     latestData: { $first: '$$ROOT' }
                 }
             },
             { $replaceRoot: { newRoot: '$latestData' } }
         ]);
+
+        if (latestPerDevice.length === 0) {
+            return res.json({
+                success: true,
+                data: {
+                    deviceID: null,
+                    water: { level: 0, status: 'No Data', updatedAt: null },
+                    wind: { speed: 0 },
+                    rain: { intensity: 0 },
+                    devices: { total: 0, active: 0 },
+                    notifications: []
+                }
+            });
+        }
 
         // Determine worst condition
         const worstData = latestPerDevice.reduce((max, current) => {
@@ -192,10 +206,16 @@ export const getMonitoringData = async (req, res) => {
                 { $unwind: '$deviceDetails' },
                 {
                     $lookup: {
-                        from: 'deviceimages',
+                        from: 'images',
                         localField: '_id',
                         foreignField: 'deviceID',
                         as: 'imageDetails'
+                    }
+                },
+                {
+                    $unwind: {
+                        path: '$imageDetails',
+                        preserveNullAndEmptyArrays: true
                     }
                 },
                 {
@@ -211,12 +231,20 @@ export const getMonitoringData = async (req, res) => {
                         },
                         wind: { speed: '$latestReading.windSpeed' },
                         rain: { intensity: '$latestReading.rainIntensity' },
-                        imageUrl: { $arrayElemAt: ['$imageDetails.imageUrl', 0] }
+                        imageUrl: { $ifNull: ['$imageDetails.imageUrl', null] }
                     }
                 }
             ]),
             Device.find()
         ]);
+
+        if (monitoringData.length === 0) {
+            return res.json({
+                success: true,
+                stats: { totalDevices: 0, activeDevices: 0 },
+                devices: []
+            });
+        }
 
         // 2. Calculate activity status (Active if pinged in last 5 minutes)
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
