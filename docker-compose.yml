@@ -3,33 +3,30 @@ services:
     build:
       context: ./hydroalert-backend
     container_name: mern-backend
+    restart: always
     ports:
-      - "5000:5000"
-    volumes:
-      - ./hydroalert-backend:/app
-      - /app/node_modules
+      - "5000:5000"  # This exposes port 5000 to the outside world
     env_file:
       - ./hydroalert-backend/.env
     depends_on:
       - mongo
 
-  frontend:
-    build:
-      context: ./hydroalert-frontend
-    container_name: mern-frontend
-    ports:
-      - "80:80"
-    volumes:
-      - ./hydroalert-frontend:/app
-      - /app/node_modules
-    env_file:
-      - ./hydroalert-frontend/.env
-    depends_on:
-      - backend
+  # frontend:
+  #   build:
+  #     context: ./hydroalert-frontend
+  #   container_name: mern-frontend
+  #   restart: always
+  #   ports:
+  #     - "3000:80"
+  #   env_file:
+  #     - ./hydroalert-frontend/.env
+  #   depends_on:
+  #     - backend
 
   mongo:
     image: mongo:7
     container_name: hydroalert-mongo
+    restart: always
     ports:
       - "27017:27017"
     volumes:
