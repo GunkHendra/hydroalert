@@ -109,5 +109,6 @@ app.get('/api-docs-json', (req, res) => {
 app.use('/api/device', deviceRoutes);
 app.use('/api', dashboardRoutes);
 app.use('/api', notificationRoutes);
+app.use('/uploads', express.static('uploads'));
 
 server.listen(5000, () => console.log('Server running on port 5000'));

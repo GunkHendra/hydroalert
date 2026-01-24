@@ -7,6 +7,7 @@ import SensorData from '../models/SensorData.js';
 import { getWaterStatus } from '../utils/statusHelper.js';
 import Notification from '../models/Notification.js';
 import { sendTelegramAlert } from '../services/telegramService.js';
+
 /**
  * @openapi
  * /api/device/register:
@@ -292,7 +293,7 @@ export const uploadImage = async (req, res) => {
         const newImageUrl = `/uploads/${req.file.filename}`;
 
         // Find if there's an existing image record for this device
-        const existingRecord = await DeviceImage.findOne({ deviceID });
+        const existingRecord = await Image.findOne({ deviceID });
 
         if (existingRecord) {
             // Delete the OLD physical file to save space immediately
@@ -306,7 +307,7 @@ export const uploadImage = async (req, res) => {
             await existingRecord.save();
         } else {
             // 4. Create new record if it's the device's first upload
-            await DeviceImage.create({
+            await Image.create({
                 deviceID,
                 imageUrl: newImageUrl,
             });
