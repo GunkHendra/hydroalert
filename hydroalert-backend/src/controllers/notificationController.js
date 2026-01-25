@@ -54,6 +54,11 @@ import Notification from '../models/Notification.js';
  *           type: string
  *           enum: [newest, oldest]
  *         description: Sort order by date
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Limit the number of notifications returned
  *     responses:
  *       200:
  *         description: Success

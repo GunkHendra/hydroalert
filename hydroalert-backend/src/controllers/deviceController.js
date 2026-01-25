@@ -293,6 +293,33 @@ const handleNotification = async (req, deviceID, status, level) => {
 };
 
 
+/**
+ * @openapi
+ * /api/device/upload-image:
+ *   post:
+ *     summary: Upload an image from the IoT device
+ *     tags: [Devices]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deviceID:
+ *                 type: string
+ *                 example: "DEV-001"
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       201:
+ *         description: Image uploaded successfully
+ *       400:
+ *         description: Bad Request
+ *       500:
+ *         description: Upload Logic Error
+ */
 export const uploadImage = async (req, res) => {
     const { deviceID } = req.body;
 
