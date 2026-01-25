@@ -4,9 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import Device from '../models/Device.js';
 import SensorData from '../models/SensorData.js';
-import { getWaterStatus } from '../utils/statusHelper.js';
+import { getWaterStatus, STATUS_THRESHOLDS } from '../utils/statusHelper.js';
 import Notification from '../models/Notification.js';
 import { sendTelegramAlert } from '../services/telegramService.js';
+import { predictNextStatusTime } from '../services/predictionService.js';
 
 /**
  * @openapi
@@ -184,22 +185,34 @@ export const storeSensorData = async (req, res) => {
             return current.waterLevel > max.waterLevel ? current : max;
         });
 
-        const waterStatus = getWaterStatus(worstData.waterLevel);
+        // Update overall dashboard if this device has the worst data
+        if (worstData.deviceID === deviceID) {
+            const waterStatus = getWaterStatus(worstData.waterLevel);
+            io.to('dashboard').emit('update_overall_sensor_data', {
+                water: {
+                    level: worstData.waterLevel,
+                    status: waterStatus,
+                    updatedAt: worstData.createdAt
+                },
+                wind: { speed: worstData.windSpeed },
+                rain: { intensity: worstData.rainIntensity }
+            });
+        }
 
-        // Update Dashboard clients about overall water status
-        io.to('dashboard').emit('update_overall_sensor_data', {
-            water: {
-                level: worstData.waterLevel,
-                status: waterStatus,
-                updatedAt: worstData.createdAt
-            },
-            wind: { speed: worstData.windSpeed },
-            rain: { intensity: worstData.rainIntensity }
-        });
-
-        // TRIGGER NOTIFICATION (Only if status is critical)
+        // Trigger Notification and Prediction (Only if status is critical)
         if (status !== 'Normal') {
             await handleNotification(req, deviceID, status, waterLevel);
+
+            if (status !== 'Bahaya') {
+                // Water level prediction
+                let prediction = await predictNextStatusTime(deviceID, newSensorData);
+                if (prediction) {
+                    io.to(deviceID).emit('water_level_prediction', {
+                        deviceID,
+                        prediction,
+                    });
+                }
+            }
         }
 
         res.status(201).json({
