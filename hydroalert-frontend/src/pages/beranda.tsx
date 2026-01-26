@@ -2,17 +2,20 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
+import { connectSocket } from '../lib/socket'
+import { LoadingSkeleton } from '../components/LoadingSkeleton'
 
 type Notification = {
   title: string
   description: string
   status: 'normal' | 'warning'
-  time: string
+  time?: string
 }
 
 type DashboardResponse = {
   success: boolean
   data: {
+    deviceID: string
     water: { level: number; status: string; updatedAt: string }
     wind: { speed: number }
     rain: { intensity: number }
@@ -21,37 +24,12 @@ type DashboardResponse = {
   }
 }
 
-const fallbackNotifications: Notification[] = [
-  {
-    title: 'Sistem Normal',
-    description: 'Semua sensor berfungsi dengan baik',
-    status: 'normal',
-    time: '5 menit lalu',
-  },
-  {
-    title: 'Peringatan Hujan Sedang',
-    description: 'Intensitas hujan 25 mm/jam terdeteksi',
-    status: 'warning',
-    time: '15 menit lalu',
-  },
-  {
-    title: 'Sensor Diperbarui',
-    description: 'Firmware sensor hujan versi 1.0.2',
-    status: 'normal',
-    time: '40 menit lalu',
-  },
-]
-
-const sensors = [
-  { id: 1, label: '1', status: 'Aktif' },
-  { id: 2, label: '2', status: 'Aktif' },
-  { id: 3, label: '3', status: 'Aktif' },
-]
-
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dashboard, setDashboard] = useState<DashboardResponse['data'] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  const notifications = dashboard?.notifications ?? []
 
   useEffect(() => {
     let isMounted = true
@@ -61,7 +39,22 @@ function App() {
       try {
         const res = await axios.get<DashboardResponse>('http://localhost:3000/api/dashboard')
         if (isMounted && res.data?.data) {
-          setDashboard(res.data.data)
+          const mappedNotifications = (res.data.data.notifications || []).map((item) => {
+            const severity = (item as any).severity as string | undefined
+            const createdAt = (item as any).createdAt as string | undefined
+
+            return {
+              title: (item as any).title ?? 'Notifikasi',
+              description: (item as any).description ?? (item as any).message ?? '-',
+              status: severity && severity.toLowerCase() !== 'normal' ? 'warning' : 'normal',
+              time: createdAt ? formatUpdatedAt(createdAt) : undefined,
+            } as Notification
+          })
+
+          setDashboard({
+            ...res.data.data,
+            notifications: mappedNotifications,
+          })
         }
       } catch (error) {
         console.error('Failed to fetch dashboard', error)
@@ -76,6 +69,84 @@ function App() {
     return () => {
       isMounted = false
       clearInterval(intervalId)
+    }
+  }, [])
+
+  useEffect(() => {
+    const socket = connectSocket()
+
+    socket.emit('join_dashboard')
+    socket.emit('join_notifications')
+
+    const handleTotalDevices = (payload: any) => {
+      setDashboard((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          devices: {
+            ...prev.devices,
+            total: payload?.devices?.total ?? prev.devices.total,
+          },
+        }
+      })
+    }
+
+    const handleActiveDevices = (payload: any) => {
+      setDashboard((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          devices: {
+            ...prev.devices,
+            active: payload?.devices?.active ?? prev.devices.active,
+          },
+        }
+      })
+    }
+
+    const handleOverallData = (payload: any) => {
+      setDashboard((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          water: payload?.water ? { ...prev.water, ...payload.water } : prev.water,
+          wind: payload?.wind ? { ...prev.wind, ...payload.wind } : prev.wind,
+          rain: payload?.rain ? { ...prev.rain, ...payload.rain } : prev.rain,
+        }
+      })
+    }
+
+    const handleNewNotification = (notif: any) => {
+      const severity = (notif?.severity as string | undefined) || (notif?.status as string | undefined)
+      const createdAt = notif?.createdAt as string | undefined
+      const mapped: Notification = {
+        title: notif?.title ?? 'Notifikasi',
+        description: notif?.message ?? notif?.description ?? '-',
+        status: severity && severity.toLowerCase() !== 'normal' ? 'warning' : 'normal',
+        time: createdAt ? formatUpdatedAt(createdAt) : undefined,
+      }
+
+      setDashboard((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          notifications: [mapped, ...(prev.notifications || [])],
+        }
+      })
+    }
+
+    socket.on('update_total_device', handleTotalDevices)
+    socket.on('update_active_device', handleActiveDevices)
+    socket.on('update_overall_sensor_data', handleOverallData)
+    socket.on('new_notification', handleNewNotification)
+
+    return () => {
+      socket.off('update_total_device', handleTotalDevices)
+      socket.off('update_active_device', handleActiveDevices)
+      socket.off('update_overall_sensor_data', handleOverallData)
+      socket.off('new_notification', handleNewNotification)
+      socket.emit('leave_dashboard')
+      socket.emit('leave_notifications')
     }
   }, [])
 
@@ -98,25 +169,30 @@ function App() {
               <div className="space-y-1">
                 <p className="text-sm sm:text-lg font-semibold text-slate-800 whitespace-nowrap">Ketinggian Air yang Patut Diwaspadai</p>
               </div>
-              <div className="text-sm sm:text-lg font-semibold text-slate-800 whitespace-nowrap">Perangkat A</div>
+              <div className="text-sm sm:text-lg font-semibold text-slate-800 whitespace-nowrap">
+                {dashboard?.deviceID ? `Perangkat ${dashboard.deviceID}` : 'Data tidak ada'}
+              </div>
             </header>
 
+          {isLoading ? (
+            <LoadingSkeleton variant="dashboard" />
+          ) : (
           <section className="grid gap-4 sm:gap-5 lg:gap-6">
-            <div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 min-h-[260px]">
+            <div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 min-h-65">
               <div className="relative z-10 p-6 pt-7 flex flex-wrap items-center justify-between gap-4">
                 <div className="space-y-2 self-start">
                   <div className="flex items-end gap-3">
                     <span className="text-6xl font-black leading-none drop-shadow-[0_8px_24px_rgba(0,0,0,0.2)]">
-                      {dashboard?.water.level ?? 0}
+                      {dashboard?.water.level ?? 'Data tidak ada'}
                     </span>
-                    <span className="text-2xl font-semibold text-slate-700">cm</span>
+                    {typeof dashboard?.water.level === 'number' && <span className="text-2xl font-semibold text-slate-700">cm</span>}
                   </div>
                 </div>
 
                 <div className="flex-1 flex justify-end self-center">
-                  <div className="flex items-center gap-3 bg-gradient-to-r from-orange-500 to-red-500 px-7 py-3 rounded-full shadow-lg shadow-orange-600/40 border border-orange-100">
+                  <div className="flex items-center gap-3 bg-linear-to-r from-orange-500 to-red-500 px-7 py-3 rounded-full shadow-lg shadow-orange-600/40 border border-orange-100">
                     <span className="text-lg font-black uppercase tracking-[0.2em] text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
-                      {(dashboard?.water.status || 'Waspada').toUpperCase()}
+                      {(dashboard?.water.status || 'Data tidak ada').toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -136,7 +212,7 @@ function App() {
               </div>
 
               <p className="absolute bottom-3 left-6 z-10 text-xs text-white">
-                Terakhir diperbaharui: {formatUpdatedAt(dashboard?.water.updatedAt)}
+                Terakhir diperbaharui: {dashboard?.water.updatedAt ? formatUpdatedAt(dashboard.water.updatedAt) : 'Data tidak ada'}
               </p>
             </div>
 
@@ -146,8 +222,8 @@ function App() {
                   <div>
                     <p className="text-sm text-slate-500">Kecepatan Angin</p>
                     <div className="flex items-end gap-2">
-                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.wind.speed ?? 0}</span>
-                      <span className="text-base text-slate-500">km/jam</span>
+                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.wind.speed ?? 'Data tidak ada'}</span>
+                      {typeof dashboard?.wind.speed === 'number' && <span className="text-base text-slate-500">km/jam</span>}
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
@@ -168,8 +244,8 @@ function App() {
                   <div>
                     <p className="text-sm text-slate-500">Debit Air Hujan</p>
                     <div className="flex items-end gap-2">
-                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.rain.intensity ?? 0}</span>
-                      <span className="text-base text-slate-500">mm/jam</span>
+                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.rain.intensity ?? 'Data tidak ada'}</span>
+                      {typeof dashboard?.rain.intensity === 'number' && <span className="text-base text-slate-500">mm/jam</span>}
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
@@ -187,89 +263,72 @@ function App() {
             </div>
 
             <div className="grid gap-4 sm:gap-5 lg:gap-6 lg:grid-cols-2">
-              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4 min-h-[280px]">
+              <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4 min-h-70">
                 <div className="flex items-start justify-between">
                   <div className="space-y-7">
                     <p className="text-sm text-slate-500">Jumlah Alat Aktif</p>
                     <div className="flex items-end gap-2">
-                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.devices.active ?? 0}</span>
-                      <span className="text-base text-slate-500">/ {dashboard?.devices.total ?? sensors.length}</span>
+                      <span className="text-4xl font-semibold text-slate-900">{dashboard?.devices.active ?? 'Data tidak ada'}</span>
+                      <span className="text-base text-slate-500">/ {dashboard?.devices.total ?? 'Data tidak ada'}</span>
                     </div>
                     <p className="text-xs text-slate-500">Unit Sensor</p>
                     
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
-                    {dashboard?.devices.total ? Math.round(((dashboard?.devices.active ?? 0) / dashboard?.devices.total) * 100) : 0}%
+                    {dashboard?.devices.total ? Math.round(((dashboard?.devices.active ?? 0) / dashboard?.devices.total) * 100) : 'Data tidak ada'}%
                   </span>
                 </div>
                 <div className="flex-1" />
-                <div className="flex items-center gap-3 text-xs">
-                  {sensors.map((sensor) => (
-                    <span
-                      key={sensor.id}
-                      className={`flex-1 rounded-lg border px-3 py-2 text-center font-semibold ${
-                        sensor.status === 'Aktif'
-                          ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
-                          : 'border-amber-300 text-amber-700 bg-amber-50'
-                      }`}
-                    >
-                      {sensor.label}
-                    </span>
-                  ))}
-                </div>
-                    <div className="flex-1" />
-                    <div className="flex items-center gap-4 text-xs text-slate-600">
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full bg-emerald-500" />
-                    Aktif
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full bg-amber-400" />
-                    Dalam Pemeliharaan
-                  </div>
-                </div>
+                <div className="text-xs text-slate-600">Data perangkat tidak ada</div>
               </div>
 
               <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-slate-800">Notifikasi Terkini</p>
                   <span className="h-8 w-8 rounded-full bg-slate-900 text-white grid place-items-center text-sm font-semibold">
-                    3
+                    {notifications.length}
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  {(dashboard?.notifications?.length ? dashboard.notifications : fallbackNotifications).map((item, index) => (
-                    <div
-                      key={item.title ?? index}
-                      className={`rounded-xl border px-4 py-3 shadow-sm flex items-start justify-between gap-3 ${
-                        item.status === 'normal'
-                          ? 'border-emerald-200 bg-emerald-50/70'
-                          : 'border-orange-200 bg-orange-50/80'
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-slate-800">{item.title}</p>
-                        <p className="text-xs text-slate-600">{item.description}</p>
-                      </div>
-                      <span
-                        className={`text-[11px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${
+                  {notifications.length === 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      Data tidak ada
+                    </div>
+                  ) : (
+                    notifications.map((item, index) => (
+                      <div
+                        key={item.title ?? index}
+                        className={`rounded-xl border px-4 py-3 shadow-sm flex items-start justify-between gap-3 ${
                           item.status === 'normal'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-orange-100 text-orange-700'
+                            ? 'border-emerald-200 bg-emerald-50/70'
+                            : 'border-orange-200 bg-orange-50/80'
                         }`}
                       >
-                        {item.time}
-                      </span>
-                    </div>
-                  ))}
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+                          <p className="text-xs text-slate-600">{item.description}</p>
+                        </div>
+                        <span
+                          className={`text-[11px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${
+                            item.status === 'normal'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-orange-100 text-orange-700'
+                          }`}
+                        >
+                          {item.time ?? 'Data tidak ada'}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
           </section>
+          )}
           </main>
 
-          <footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
+          <footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/60 px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
             <a className="hover:text-slate-700" href="#">
               About HydroAlert
             </a>

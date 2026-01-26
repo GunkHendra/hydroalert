@@ -19,13 +19,13 @@ type DayGroup = {
 }
 
 type NotificationAPI = {
-	_id?: string
-	deviceID?: string
-	title?: string
-	message?: string
-	severity?: string
-	createdAt?: string
-	updatedAt?: string
+	_id: string
+	deviceID: string
+	title: string
+	message: string
+	severity: string
+	createdAt: string
+	updatedAt: string
 }
 
 type NotificationBucket = {
@@ -37,77 +37,6 @@ type NotificationsResponse = {
 	success: boolean
 	data: Record<string, NotificationBucket>
 }
-
-const fallbackDays: DayGroup[] = [
-	{
-		date: '11 November 2025',
-		total: 4,
-		items: [
-			{
-				title: 'Sistem Normal',
-				device: 'Device A',
-				description: 'Semua sensor berfungsi dengan baik',
-				time: '14:30',
-				ago: '2 jam lalu',
-				status: 'normal',
-			},
-			{
-				title: 'Peringatan Hujan Sedang',
-				device: 'Device B',
-				description: 'Intensitas hujan 25 mm/jam terdeteksi',
-				time: '13:15',
-				ago: '3 jam lalu',
-				status: 'warning',
-			},
-			{
-				title: 'Sensor Diperbaharui',
-				device: 'Device C',
-				description: 'Kalibrasi sensor selesai dilakukan',
-				time: '11:00',
-				ago: '5 jam lalu',
-				status: 'info',
-			},
-			{
-				title: 'Level Air Normal',
-				device: 'Device A',
-				description: 'Ketinggian air 120 cm dalam batas normal',
-				time: '09:45',
-				ago: '7 jam lalu',
-				status: 'normal',
-			},
-		],
-	},
-	{
-		date: '10 November 2025',
-		total: 3,
-		items: [
-			{
-				title: 'Debit Air Meningkat',
-				device: 'Device B',
-				description: 'Peningkatan debit air mencapai 30 mm/jam',
-				time: '18:20',
-				ago: '1 hari lalu',
-				status: 'warning',
-			},
-			{
-				title: 'Maintenance Terjadwal',
-				device: 'Device A',
-				description: 'Pengecekan rutin jaringan sensor',
-				time: '15:00',
-				ago: '1 hari lalu',
-				status: 'info',
-			},
-			{
-				title: 'Kalibrasi Sensor Hujan',
-				device: 'Device C',
-				description: 'Kalibrasi selesai dan stabil',
-				time: '09:10',
-				ago: '1 hari lalu',
-				status: 'normal',
-			},
-		],
-	},
-]
 
 const statusOptions: Array<Notification['status']> = ['normal', 'warning', 'info']
 
@@ -206,7 +135,7 @@ const mapNotificationsToDayGroups = (buckets: Record<string, NotificationBucket>
 	const deviceSet = new Set<string>()
 
 	Object.values(buckets || {}).forEach((bucket) => {
-		bucket.items?.forEach((item) => {
+		bucket.items.forEach((item) => {
 			const dateLabel = formatDateDisplay(item.createdAt)
 			const status = normalizeStatus(item.severity)
 			const device = item.deviceID || 'Unknown Device'
@@ -242,7 +171,7 @@ const mapNotificationsToDayGroups = (buckets: Record<string, NotificationBucket>
 export default function Riwayat() {
 	const [tabs, setTabs] = useState<string[]>(['All Devices'])
 	const [activeTab, setActiveTab] = useState<string>('All Devices')
-	const [days, setDays] = useState<DayGroup[]>(fallbackDays)
+	const [days, setDays] = useState<DayGroup[]>([])
 	const [sidebarOpen, setSidebarOpen] = useState(false)
 	const [filterOpen, setFilterOpen] = useState(false)
 	const [activeDayISO, setActiveDayISO] = useState<string>('')
@@ -258,7 +187,7 @@ export default function Riwayat() {
 				const res = await axios.get<NotificationsResponse>('http://localhost:3000/api/notifications')
 				if (!isMounted) return
 				const { days: mappedDays, devices } = mapNotificationsToDayGroups(res.data?.data || {})
-				if (mappedDays.length) setDays(mappedDays)
+				setDays(mappedDays)
 				const newTabs = ['All Devices', ...devices]
 				setTabs(newTabs)
 				setActiveTab((current) => (newTabs.includes(current) ? current : 'All Devices'))
