@@ -1,7 +1,8 @@
+// src/services/predictionService.js
 import SensorData from '../models/SensorData.js';
 import { STATUS_THRESHOLDS } from '../utils/statusHelper.js';
 
-const MM_S_TO_MM_H = 3600; 
+const MM_S_TO_MM_H = 3600;
 const MIN_TIME_WINDOW_MIN = 10;
 
 const getRainFactor = (rainMmH) => {
@@ -45,7 +46,7 @@ export const predictNextStatusTime = async (deviceID, currentData) => {
     const allData = [...pastData, currentData];
 
     allData.forEach((d, i) => {
-        const x = i; // Kita gunakan index sebagai representasi waktu
+        const x = (d.createdAt - allData[0].createdAt) / 60000; // waktu dalam menit sejak data pertama
         const y = d.waterLevel;
         sumX += x;
         sumY += y;
@@ -55,9 +56,9 @@ export const predictNextStatusTime = async (deviceID, currentData) => {
 
     // Rumus Slope (m): laju kenaikan per interval data
     const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-    
+
     // Konversi slope ke cm/menit (asumsi data masuk tiap 1 menit)
-    const baseRiseRate = slope; 
+    const baseRiseRate = slope;
 
     if (baseRiseRate <= 0.01) return null;
 

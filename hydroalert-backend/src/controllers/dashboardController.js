@@ -1,8 +1,8 @@
 // src/controllers/dashboardController.js
-import SensorData from '../models/SensorData.js';
 import Device from '../models/Device.js';
 import Notification from '../models/Notification.js';
-import { getWaterStatus } from '../utils/statusHelper.js';
+import Image from '../models/Image.js';
+import { redisClient } from '../utils/redisClient.js';
 
 /**
  * @openapi
@@ -59,72 +59,36 @@ import { getWaterStatus } from '../utils/statusHelper.js';
  */
 export const getDashboardData = async (req, res) => {
     try {
-        // Get latest sensor data
-        const latestPerDevice = await SensorData.aggregate([
-            { $sort: { createdAt: -1 } },
-            {
-                $group: {
-                    _id: '$deviceID',
-                    latestData: { $first: '$$ROOT' }
-                }
-            },
-            { $replaceRoot: { newRoot: '$latestData' } }
-        ]);
+        const allDevicesRaw = await redisClient.hGetAll('latest_device_status');
+        const allDevicesData = Object.values(allDevicesRaw)
+            .map(d => JSON.parse(d))
+            .filter(d => (new Date() - new Date(d.updatedAt)) < 5 * 60 * 1000); // Only recent data
 
-        if (latestPerDevice.length === 0) {
-            return res.json({
-                success: true,
-                data: {
-                    deviceID: null,
-                    water: { level: 0, status: 'No Data', updatedAt: null },
-                    wind: { speed: 0 },
-                    rain: { intensity: 0 },
-                    devices: { total: 0, active: 0 },
-                    notifications: []
-                }
-            });
+        let worstData = null;
+        if (allDevicesData.length > 0) {
+            worstData = allDevicesData.reduce((max, current) => (current.waterLevel > max.waterLevel ? current : max));
         }
 
-        // Determine worst condition
-        const worstData = latestPerDevice.reduce((max, current) => {
-            return current.waterLevel > max.waterLevel ? current : max;
-        });
+        const [devices, notifications] = await Promise.all([
+            Device.find(),
+            Notification.find().sort({ createdAt: -1 }).limit(5)
+        ]);
 
-        const rainData = await SensorData.find({
-            device: worstData.device,
-            rainIntensity: { $gt: 0 }
-        })
-            .sort({ createdAt: -1 })
-            .limit(20);
-
-        // Device info
-        const devices = await Device.find();
         const activeDevices = devices.filter(
             d => Date.now() - d.lastActive < 5 * 60 * 1000
         );
 
-        // Notifications
-        const notifications = await Notification.find()
-            .sort({ createdAt: -1 })
-            .limit(5);
-
-        const waterStatus = getWaterStatus(worstData.waterLevel);
-
         res.json({
             success: true,
             data: {
-                deviceID: worstData.deviceID,
+                deviceID: worstData?.deviceID || null,
                 water: {
-                    level: worstData.waterLevel,
-                    status: waterStatus,
-                    updatedAt: worstData.createdAt
+                    level: worstData?.waterLevel || 0,
+                    status: worstData?.status || 'Normal',
+                    updatedAt: worstData?.updatedAt || null
                 },
-                wind: {
-                    speed: worstData.windSpeed
-                },
-                rain: {
-                    intensity: worstData.rainIntensity,
-                },
+                wind: { speed: worstData?.windSpeed || 0 },
+                rain: { intensity: worstData?.rainIntensity || 0 },
                 devices: {
                     total: devices.length,
                     active: activeDevices.length
@@ -185,79 +149,53 @@ export const getDashboardData = async (req, res) => {
  */
 export const getMonitoringData = async (req, res) => {
     try {
-        // 1. Run aggregation and Device count in parallel for speed
-        const [monitoringData, allDevices] = await Promise.all([
-            SensorData.aggregate([
-                { $sort: { deviceID: 1, createdAt: -1 } },
-                {
-                    $group: {
-                        _id: '$deviceID',
-                        latestReading: { $first: '$$ROOT' }
-                    }
-                },
-                {
-                    $lookup: {
-                        from: 'devices',
-                        localField: '_id',
-                        foreignField: 'deviceID',
-                        as: 'deviceDetails'
-                    }
-                },
-                { $unwind: '$deviceDetails' },
-                {
-                    $lookup: {
-                        from: 'images',
-                        localField: '_id',
-                        foreignField: 'deviceID',
-                        as: 'imageDetails'
-                    }
-                },
-                {
-                    $unwind: {
-                        path: '$imageDetails',
-                        preserveNullAndEmptyArrays: true
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        deviceID: '$_id',
-                        location: '$deviceDetails.location',
-                        lastActive: '$deviceDetails.lastActive',
-                        water: {
-                            level: '$latestReading.waterLevel',
-                            status: '$latestReading.status',
-                            updatedAt: '$latestReading.createdAt'
-                        },
-                        wind: { speed: '$latestReading.windSpeed' },
-                        rain: { intensity: '$latestReading.rainIntensity' },
-                        imageUrl: { $ifNull: ['$imageDetails.imageUrl', null] }
-                    }
-                }
-            ]),
-            Device.find()
+        const allDevicesRaw = await redisClient.hGetAll('latest_device_status');
+
+        // Preload Devices and Images to reduce DB calls
+        const [devices, images] = await Promise.all([
+            Device.find().lean(),
+            Image.find().lean()
         ]);
 
-        if (monitoringData.length === 0) {
-            return res.json({
-                success: true,
-                stats: { totalDevices: 0, activeDevices: 0 },
-                devices: []
-            });
-        }
+        const imageMap = images.reduce((acc, img) => {
+            acc[img.deviceID] = img.imageUrl;
+            return acc;
+        }, {});
 
-        // 2. Calculate activity status (Active if pinged in last 5 minutes)
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-        const activeCount = allDevices.filter(d => d.lastActive > fiveMinutesAgo).length;
+        const activeCount = devices.filter(d => d.lastActive > fiveMinutesAgo).length;
 
-        // 3. Return combined data
+        // Combine all monitoring data
+        const devicesMonitoring = devices.map(device => {
+            // Get sensor data from Redis
+            const sensorData = allDevicesRaw[device.deviceID]
+                ? JSON.parse(allDevicesRaw[device.deviceID])
+                : null;
+
+            const deviceImage = imageMap[device.deviceID]
+
+            return {
+                deviceID: device.deviceID,
+                location: device.location,
+                lastActive: device.lastActive,
+                water: {
+                    level: sensorData?.waterLevel || 0,
+                    status: sensorData?.status || 'Normal',
+                    updatedAt: sensorData?.updatedAt || null
+                },
+                wind: { speed: sensorData?.windSpeed || 0 },
+                rain: { intensity: sensorData?.rainIntensity || 0 },
+                imageUrl: deviceImage || null
+            };
+        });
+
         res.status(200).json({
             success: true,
             stats: {
-                totalDevices: allDevices.length,
+                totalDevices: devices.length,
                 activeDevices: activeCount
             },
-            devices: monitoringData
+            devices: devicesMonitoring
         });
     } catch (error) {
         console.error('Monitoring Error:', error);

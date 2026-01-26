@@ -12,6 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import './utils/cronJob.js'; // Import cron jobs  
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

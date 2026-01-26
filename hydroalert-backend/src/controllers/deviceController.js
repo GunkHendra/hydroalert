@@ -8,6 +8,7 @@ import { getWaterStatus, STATUS_THRESHOLDS } from '../utils/statusHelper.js';
 import Notification from '../models/Notification.js';
 import { sendTelegramAlert } from '../services/telegramService.js';
 import { predictNextStatusTime } from '../services/predictionService.js';
+import { redisClient } from '../utils/redisClient.js';
 
 /**
  * @openapi
@@ -114,125 +115,166 @@ export const storeSensorData = async (req, res) => {
             });
         }
 
-        // SANITY CHECK: Compare with the most recent reading
-        const lastReading = await SensorData.findOne({ deviceID }).sort({ createdAt: -1 });
+        // First Sanity Check
+        const lastReadingKey = `last_raw:${deviceID}`;
+        const lastRaw = await redisClient.get(lastReadingKey);
 
-        if (lastReading) {
-            const difference = Math.abs(waterLevel - lastReading.waterLevel);
-            const timeDiff = (new Date() - lastReading.createdAt) / 1000; // seconds
-
-            // Reject if water level jumps > 100cm in less than 30 seconds
-            // Adjust 100 and 30 based on your physical environment
-            if (difference > 100 && timeDiff < 30) {
-                console.warn(`[Suspicious Data] Device ${deviceID} jumped ${difference}cm in ${timeDiff}s. Ignoring.`);
-                return res.status(400).json({ error: 'Data rejected: Possible sensor error (extreme jump)' });
-            }
-        }
-
-        // Update last active
-        device.lastActive = new Date();
-        await device.save();
-
-        // Determine Status
-        const status = getWaterStatus(waterLevel);
-
-        const newSensorData = await SensorData.create({
-            deviceID,
-            rainIntensity,
-            waterLevel,
-            windSpeed,
-            status
-        });
-
-        const formattedUpdate = {
-            deviceID: newSensorData.deviceID,
-            location: device.location,
-            lastActive: device.lastActive,
-            water: {
-                level: newSensorData.waterLevel,
-                status: newSensorData.status,
-                updatedAt: newSensorData.createdAt
-            },
-            wind: { speed: newSensorData.windSpeed },
-            rain: { intensity: newSensorData.rainIntensity }
-        };
-
-        // Send it to the Monitoring Page channel
-        io.to(deviceID).emit('sensor_data_update', formattedUpdate);
-
-        const devices = await Device.find();
-        const activeDevices = devices.filter(
-            d => Date.now() - d.lastActive < 5 * 60 * 1000
-        );
-
-        // Update Dashboard clients about active device count
-        io.to('dashboard').emit('update_active_device', { devices: { active: activeDevices.length } });
-
-        // Get latest sensor data
-        const latestPerDevice = await SensorData.aggregate([
-            { $sort: { createdAt: -1 } },
-            {
-                $group: {
-                    _id: '$device',
-                    latestData: { $first: '$$ROOT' }
-                }
-            },
-            { $replaceRoot: { newRoot: '$latestData' } }
-        ]);
-
-        // Determine worst condition
-        const worstData = latestPerDevice.reduce((max, current) => {
-            return current.waterLevel > max.waterLevel ? current : max;
-        });
-
-        // Update overall dashboard if this device has the worst data
-        if (worstData.deviceID === deviceID) {
-            const waterStatus = getWaterStatus(worstData.waterLevel);
-            io.to('dashboard').emit('update_overall_sensor_data', {
-                water: {
-                    level: worstData.waterLevel,
-                    status: waterStatus,
-                    updatedAt: worstData.createdAt
-                },
-                wind: { speed: worstData.windSpeed },
-                rain: { intensity: worstData.rainIntensity }
-            });
-        }
-
-        // Trigger Notification and Prediction (Only if status is critical)
-        if (status !== 'Normal') {
-            await handleNotification(req, deviceID, status, waterLevel);
-
-            if (status !== 'Bahaya') {
-                // Water level prediction
-                let prediction = await predictNextStatusTime(deviceID, newSensorData);
-                if (prediction) {
-                    io.to(deviceID).emit('water_level_prediction', {
-                        deviceID,
-                        prediction,
-                    });
-                }
+        if (lastRaw) {
+            const last = JSON.parse(lastRaw);
+            const diff = Math.abs(waterLevel - last.waterLevel);
+            //  If the difference is too high, reject the data as noise
+            if (diff > 50 && diff > (last.waterLevel * 0.5)) {
+                console.warn(`[Rejected] Noise detected on ${deviceID}: ${diff}cm jump.`);
+                return res.status(400).json({ error: 'Data rejected: Noise detected' });
             }
         }
 
         res.status(201).json({
             success: true,
             message: 'Sensor data stored successfully',
-            status,
-            data: newSensorData
+            status: getWaterStatus(waterLevel),
+            data: {
+                deviceID: deviceID,
+                waterLevel: waterLevel,
+                rainIntensity: rainIntensity,
+                windSpeed: windSpeed,
+            }
         });
+
+        setImmediate(async () => {
+            try {
+                // Update last raw data in Redis for future noise checks
+                await redisClient.set(lastReadingKey, JSON.stringify({ waterLevel, createdAt: new Date() }), { EX: 60 });
+
+                // Also update latest device status in Redis Hash
+                await redisClient.hSet('latest_device_status', deviceID, JSON.stringify({
+                    deviceID, waterLevel, rainIntensity, windSpeed,
+                    status: getWaterStatus(waterLevel), updatedAt: new Date()
+                }));
+
+                // Update active devices set for dashboard
+                const nowEpoch = Math.floor(Date.now() / 1000);
+                await redisClient.zAdd('active_devices_zset', { score: nowEpoch, value: deviceID });
+
+                // Hapus device yang sudah tidak aktif > 5 menit (0 s/d sekarang - 300 detik)
+                await redisClient.zRemRangeByScore('active_devices_zset', 0, nowEpoch - 300);
+
+                // Update monitoring page for this device
+                const formattedUpdate = {
+                    deviceID,
+                    location: device.location,
+                    lastActive: device.lastActive,
+                    water: { level: waterLevel, status: getWaterStatus(waterLevel), updatedAt: new Date() },
+                    wind: { speed: windSpeed },
+                    rain: { intensity: rainIntensity }
+                };
+                io.to(deviceID).emit('sensor_data_update', formattedUpdate);
+
+                // Update dashboard about total and active devices
+                const activeCount = await redisClient.zCard('active_devices_zset');
+                const totalDevices = await Device.countDocuments();
+                io.to('dashboard').emit('update_total_device', { devices: { total: totalDevices } });
+                io.to('dashboard').emit('update_active_device', { devices: { active: activeCount } });
+
+                // Update device's last active timestamp in MongoDB
+                await Device.updateOne({ deviceID }, { lastActive: new Date() }).catch(err => console.error(err));
+
+                // Determine worst condition from all devices from Redis
+                const allDevicesRaw = await redisClient.hGetAll('latest_device_status');
+                const allDevicesData = Object.values(allDevicesRaw)
+                    .map(d => JSON.parse(d))
+                    .filter(d => {
+                        // Only consider data updated within last 5 minutes
+                        const dataAge = new Date() - new Date(d.updatedAt);
+                        return dataAge < 5 * 60 * 1000;
+                    });
+
+                if (allDevicesData.length > 0) {
+                    const worstData = allDevicesData.reduce((max, current) => {
+                        return current.waterLevel > max.waterLevel ? current : max;
+                    });
+
+                    // Emit to dashboard if this device is the worst
+                    if (worstData.deviceID === deviceID) {
+                        io.to('dashboard').emit('update_overall_sensor_data', {
+                            deviceID: worstData.deviceID,
+                            water: {
+                                level: worstData.waterLevel,
+                                status: worstData.status,
+                                updatedAt: worstData.updatedAt
+                            },
+                            wind: { speed: worstData.windSpeed },
+                            rain: { intensity: worstData.rainIntensity }
+                        });
+                    }
+                }
+
+                // Redis Buffering
+                const redisKey = `buffer:${deviceID}`;
+                await redisClient.rPush(redisKey, JSON.stringify({ waterLevel, rainIntensity, windSpeed }));
+                const bufferLength = await redisClient.lLen(redisKey);
+
+                if (bufferLength >= 12) {
+                    const processingKey = `processing:buffer:${deviceID}`;
+                    // Move data to a processing key to avoid blocking new incoming data
+                    const renamed = await redisClient.rename(redisKey, processingKey).catch(() => null);
+                    if (!renamed) {
+                        // If rename fails, another process is handling it
+                        return;
+                    }
+
+                    await redisClient.expire(processingKey, 300); // 5 minutes
+
+                    const rawDataList = await redisClient.lRange(processingKey, 0, -1)
+                    const parsedData = rawDataList.map(d => JSON.parse(d));
+
+                    const avgWater = parsedData.reduce((a, b) => a + b.waterLevel, 0) / parsedData.length;
+                    const avgRain = (parsedData.reduce((a, b) => a + b.rainIntensity, 0) / parsedData.length) * 3600; // mm/h
+                    const avgWind = parsedData.reduce((a, b) => a + b.windSpeed, 0) / parsedData.length;
+
+                    const status = getWaterStatus(avgWater);
+
+                    // Store averaged data to MongoDB
+                    const newSensorData = await SensorData.create({
+                        deviceID: deviceID,
+                        waterLevel: avgWater,
+                        rainIntensity: avgRain,
+                        windSpeed: avgWind,
+                        status: status
+                    });
+
+                    // Send Notification
+                    if (status !== 'Normal') {
+                        await handleNotification(req, deviceID, status, avgWater);
+                    }
+
+                    // Predictive Analysis
+                    if (status !== 'Normal' && status !== 'Bahaya') {
+                        const prediction = await predictNextStatusTime(deviceID, newSensorData);
+                        if (prediction) {
+                            io.to(deviceID).emit('water_level_prediction', { deviceID, prediction });
+                        }
+                    }
+
+                    // Clear Redis Buffer
+                    await redisClient.del(processingKey)
+                }
+            } catch (err) {
+                console.error("Error on background processing:", err);
+            }
+        })
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server Error' });
     }
 };
 
-const handleNotification = async (req, deviceID, status, level) => {
+const handleNotification = async (req, deviceID, status, avgWaterlevel) => {
     const io = req.app.get('socketio'); // Retrieve io instance
     // COOLDOWN: Don't create a new notification for the same device + status 
     // if one was created in the last 30 minutes.
     const COOLDOWN_MINUTES = 30;
-    const SIGNIFICANT_CHANGE_CM = 20;
+    const SIGNIFICANT_CHANGE_CM = 10;
     const cooldownPeriod = new Date(Date.now() - COOLDOWN_MINUTES * 60 * 1000);
 
     const lastNotif = await Notification.findOne({ deviceID }).sort({ createdAt: -1 });
@@ -247,7 +289,7 @@ const handleNotification = async (req, deviceID, status, level) => {
 
         // Extract numeric level from previous message or store it as a separate field (Recommended)
         // If the level has risen significantly, we should ignore the cooldown.
-        const levelJump = level - (lastNotif.waterLevel || 0);
+        const levelJump = avgWaterlevel - (lastNotif.avgWaterLevel || 0);
         const isSignificantRise = levelJump >= SIGNIFICANT_CHANGE_CM;
 
         if (isDifferentStatus || isExpired || isSignificantRise) {
@@ -265,21 +307,20 @@ const handleNotification = async (req, deviceID, status, level) => {
 
         // Use a helper to avoid undefined messages if status doesn't match perfectly
         const getMessage = (s, l) => {
-            if (s.includes('Siaga')) return `Ketinggian air mencapai ${l}cm. Pantau area sekitar.`;
-            if (s === 'Waspada') return `Ketinggian air ${l}cm. Persiapkan evakuasi.`;
-            if (s === 'Bahaya') return `DARURAT! Ketinggian air ${l}cm. Segera evakuasi!`;
-            return `Status sensor: ${s} (${l}cm)`;
+            if (s.includes('Siaga')) return `Rata-rata ketinggian air mencapai ${l.toFixed(1)}cm dalam 1 menit terakhir. Pantau area sekitar.`;
+            if (s === 'Waspada') return `Rata-rata ketinggian air ${l.toFixed(1)}cm dalam 1 menit terakhir. Persiapkan evakuasi.`;
+            if (s === 'Bahaya') return `DARURAT! Rata-rata ketinggian air ${l.toFixed(1)}cm dalam 1 menit terakhir. Segera evakuasi!`;
+            return `Status sensor: ${s} (${l.toFixed(1)}cm)`;
         };
 
         const title = titleMap[status] || 'Peringatan Sensor';
-        const message = getMessage(status, level);
+        const message = getMessage(status, avgWaterlevel);
 
-        // 3. Save to DB (Include waterLevel field for future comparisons)
+        // Save to DB (Include waterLevel field for future comparisons)
         const newNotif = await Notification.create({
             deviceID,
             severity: status,
-            waterLevel: level, // Add this to your Schema!
-            type: 'Sensor Alert',
+            avgWaterLevel: avgWaterlevel,
             title,
             message
         });
@@ -288,20 +329,17 @@ const handleNotification = async (req, deviceID, status, level) => {
 
         // 4. Construct Telegram Message with better formatting
         const telegramMessage = `
-📢 *${title}*
+📢 ${title}
 ━━━━━━━━━━━━━━
-🆔 *Device:* ${deviceID}
-🌊 *Ketinggian:* ${level} cm
-📊 *Status:* ${status}
-🕒 *Waktu:* ${new Date().toLocaleString('id-ID')}
+🆔 ID Device: ${deviceID}
+🌊 Rata-rata ketinggian (1 menit terakhir): ${avgWaterlevel.toFixed(1)} cm
+📊 Status: ${status}
+🕒 Waktu: ${new Date().toLocaleString('id-ID')}
 
 📝 ${message}
-        `;
+`;
 
         sendTelegramAlert(telegramMessage);
-
-        // Real-time update for your React Native dashboard
-        // req.app.get('socketio').to(deviceID).emit('new_notification', { status, level });
     }
 };
 

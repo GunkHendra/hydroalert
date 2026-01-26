@@ -1,10 +1,10 @@
+// src/models/SensorData.js
 import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const SensorDataSchema = new Schema({
     deviceID: {
         type: String,
-        ref: 'Device',
         required: true
     },
     waterLevel: { type: Number, required: true },
@@ -12,7 +12,7 @@ const SensorDataSchema = new Schema({
     rainIntensity: { type: Number, required: true },
     status: {
         type: String,
-        enum: ['Normal', 'Siaga', 'Waspada', 'Bahaya'],
+        enum: ['Normal', 'Waspada', 'Siaga 1', 'Siaga 2', 'Bahaya'],
         required: true
     }
 }, { timestamps: true });
