@@ -33,7 +33,7 @@ type DeviceMetric = {
 	label: string
 	value: number
 	unit: string
-	status: 'Normal' | 'Warning'
+	statusLabel: string
 	scaleFill: number
 	trend: string
 	detail: string
@@ -45,8 +45,11 @@ type Device = {
 	heroLabel: string
 	heroValue: number
 	heroUnit: string
-	status: 'Normal' | 'Warning'
+	statusLabel: string
 	updatedAt: string
+	waterStatus: string
+	windStatus: string
+	rainStatus: string
 	metrics: DeviceMetric[]
 	cameraTime: string
 	location: string
@@ -54,10 +57,20 @@ type Device = {
 	cameraImage: string
 }
 
-const normalizeStatus = (status?: string): Device['status'] => {
-	const normalized = (status || '').toLowerCase()
-	if (normalized === 'warning' || normalized === 'bahaya' || normalized === 'waspada') return 'Warning'
-	return 'Normal'
+type PredictionState = {
+	deviceID: string
+	toStatus: string
+	toWaterLevel: number
+	estimatedMinutes: number
+	currentLevel: number
+}
+
+const getBadgeClass = (status?: string) => {
+	const lower = (status || '').toLowerCase()
+	if (lower.includes('bahaya')) return 'bg-rose-100 text-rose-700'
+	if (lower.includes('siaga') || lower.includes('warning') || lower.includes('waspada')) return 'bg-amber-100 text-amber-700'
+	if (lower.includes('normal')) return 'bg-emerald-100 text-emerald-700'
+	return 'bg-slate-100 text-slate-600'
 }
 
 const formatTime = (iso?: string) => {
@@ -100,7 +113,9 @@ const formatLocation = (location: LocationValue): { location: string; coordinate
 
 const mapMonitoringDevices = (payload: MonitoringDeviceAPI[]): Device[] => {
 	return payload.map((device) => {
-		const status = normalizeStatus(device.water.status)
+		const waterStatus = device.water.status || 'Data tidak ada'
+		const windStatus = (device as any).wind?.status ?? 'Data tidak ada'
+		const rainStatus = (device as any).rain?.status ?? 'Data tidak ada'
 		const updatedAt = device.water.updatedAt || device.lastActive
 		const { location, coordinates } = formatLocation(device.location)
 		return {
@@ -109,14 +124,17 @@ const mapMonitoringDevices = (payload: MonitoringDeviceAPI[]): Device[] => {
 			heroLabel: 'Ketinggian Air Sungai',
 			heroValue: device.water.level ?? 0,
 			heroUnit: 'cm',
-			status,
+			statusLabel: waterStatus,
 			updatedAt: formatTime(updatedAt),
+			waterStatus,
+			windStatus,
+			rainStatus,
 			metrics: [
 				{
 					label: 'Kecepatan Angin',
 					value: device.wind.speed ?? 0,
 					unit: 'km/jam',
-					status,
+					statusLabel: windStatus,
 					scaleFill: scaleFill(device.wind.speed ?? 0, 60),
 					trend: '',
 					detail: `Terakhir aktif ${formatAgo(device.lastActive)}`,
@@ -125,7 +143,7 @@ const mapMonitoringDevices = (payload: MonitoringDeviceAPI[]): Device[] => {
 					label: 'Debit Air Hujan',
 					value: device.rain.intensity ?? 0,
 					unit: 'mm/jam',
-					status,
+					statusLabel: rainStatus,
 					scaleFill: scaleFill(device.rain.intensity ?? 0, 80),
 					trend: '',
 					detail: `Diperbarui ${formatAgo(device.water.updatedAt)}`,
@@ -144,6 +162,8 @@ export default function Pemantauan() {
 	const [activeDeviceId, setActiveDeviceId] = useState<string>()
 	const [isLoading, setIsLoading] = useState(false)
 	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const [predictionMap, setPredictionMap] = useState<Record<string, PredictionState>>({})
+	const shouldShowActivePrediction = Boolean(predictionMap[activeDeviceId || ''] && predictionMap[activeDeviceId || ''].estimatedMinutes <= 60)
 
 	useEffect(() => {
 		let isMounted = true
@@ -177,6 +197,16 @@ export default function Pemantauan() {
 		return devices.find((device) => device.id === activeDeviceId) ?? devices[0]
 	}, [activeDeviceId, devices])
 
+	const formatEta = (minutes?: number) => {
+		if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return 'Perkiraan waktu tidak tersedia'
+		if (minutes < 1) return 'Kurang dari 1 menit'
+		if (minutes < 60) return `${minutes} menit lagi`
+		const hours = Math.floor(minutes / 60)
+		const mins = minutes % 60
+		if (hours >= 24) return `${Math.floor(hours / 24)} hari ${hours % 24} jam lagi`
+		return mins ? `${hours} jam ${mins} menit lagi` : `${hours} jam lagi`
+	}
+
 	useEffect(() => {
 		const socket = connectSocket()
 
@@ -191,8 +221,31 @@ export default function Pemantauan() {
 			})
 		}
 
-		const handlePrediction = (_payload: any) => {
-			// Placeholder: integrate prediction UI if needed
+			const handlePrediction = (payload: any) => {
+			const pred = payload?.prediction
+			const deviceID = payload?.deviceID
+			if (!pred || !deviceID) return
+			const mapped: PredictionState = {
+				deviceID,
+				toStatus: pred.toStatus ?? 'Data tidak ada',
+				toWaterLevel: Number(pred.toWaterLevel) || 0,
+				estimatedMinutes: typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : 0,
+				currentLevel: Number(pred.waterLevel) || 0,
+			}
+
+			if (mapped.estimatedMinutes > 60) {
+				setPredictionMap((prev) => {
+					const next = { ...prev }
+					delete next[deviceID]
+					return next
+				})
+				return
+			}
+
+			setPredictionMap((prev) => ({
+				...prev,
+				[deviceID]: mapped,
+			}))
 		}
 
 		const handleNewImage = (payload: any) => {
@@ -201,9 +254,8 @@ export default function Pemantauan() {
 			setDevices((prev) => prev.map((d) => (d.id === deviceID ? { ...d, cameraImage: imageUrl } : d)))
 		}
 
-		if (activeDeviceId) {
-			socket.emit('join_device', activeDeviceId)
-		}
+		const deviceIds = devices.map((d) => d.id).filter(Boolean)
+		deviceIds.forEach((id) => socket.emit('join_device', id))
 
 		socket.on('sensor_data_update', handleSensorUpdate)
 		socket.on('water_level_prediction', handlePrediction)
@@ -213,11 +265,11 @@ export default function Pemantauan() {
 			socket.off('sensor_data_update', handleSensorUpdate)
 			socket.off('water_level_prediction', handlePrediction)
 			socket.off('new_image', handleNewImage)
-			if (activeDeviceId) {
-				socket.emit('leave_device', activeDeviceId)
-			}
+			deviceIds.forEach((id) => socket.emit('leave_device', id))
 		}
-	}, [activeDeviceId])
+	}, [devices])
+
+	const activePrediction = activeDeviceId ? predictionMap[activeDeviceId] : undefined
 
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
@@ -282,14 +334,10 @@ export default function Pemantauan() {
 
 										<div className="flex-1 flex justify-end self-center">
 											<div
-												className={`flex items-center gap-3 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full shadow-lg border ${
-													activeDevice.status === 'Normal'
-														? 'bg-linear-to-r from-emerald-500 to-green-600 shadow-emerald-600/30 border-emerald-100'
-														: 'bg-linear-to-r from-amber-400 to-orange-500 shadow-amber-500/30 border-amber-100'
-												}`}
+												className={`flex items-center gap-3 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full shadow-lg border ${getBadgeClass(activeDevice.waterStatus)} border-transparent`}
 											>
-												<span className="text-sm sm:text-base font-black uppercase tracking-[0.18em] text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-													{activeDevice.status}
+												<span className="text-sm sm:text-base font-black uppercase tracking-[0.18em] text-slate-900">
+													{activeDevice.waterStatus}
 												</span>
 											</div>
 										</div>
@@ -316,17 +364,13 @@ export default function Pemantauan() {
 														<span className="text-base text-slate-500">{metric.unit}</span>
 													</div>
 												</div>
-												<span
-													className={`px-3 py-1 rounded-full text-xs font-semibold ${
-														metric.status === 'Normal' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-													}`}
-												>
-													{metric.status}
+												<span className={`px-3 py-1 rounded-full text-xs font-semibold ${getBadgeClass(metric.statusLabel)}`}>
+													{metric.statusLabel}
 												</span>
 											</div>
 											<div className="h-1.5 rounded-full bg-slate-100">
 												<div
-													className={`h-full rounded-full ${metric.status === 'Normal' ? 'bg-sky-500' : 'bg-amber-500'}`}
+													className={`h-full rounded-full ${getBadgeClass(metric.statusLabel).includes('emerald') ? 'bg-sky-500' : 'bg-amber-500'}`}
 													style={{ width: `${metric.scaleFill}%` }}
 												/>
 											</div>
@@ -350,7 +394,11 @@ export default function Pemantauan() {
 											<span className="text-xs font-semibold text-red-100">LIVE</span>
 										</div>
 										<div className="h-64 bg-slate-100 overflow-hidden">
-											<img src={activeDevice.cameraImage} alt="Live camera feed" className="h-full w-full object-cover" />
+											{activeDevice.cameraImage ? (
+												<img src={activeDevice.cameraImage} alt="Live camera feed" className="h-full w-full object-cover" />
+											) : (
+												<div className="h-full w-full grid place-items-center text-xs text-slate-500">Tidak ada gambar</div>
+											)}
 										</div>
 										<div className="px-4 py-3 text-xs text-slate-600 flex items-center justify-between">
 											<span>
@@ -375,6 +423,49 @@ export default function Pemantauan() {
 										</div>
 									</div>
 								</div>
+
+								{shouldShowActivePrediction && activePrediction && (
+									<div className="rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden">
+										<div className="relative overflow-hidden">
+											<div className="absolute inset-0 bg-linear-to-r from-rose-50 via-white to-slate-50" aria-hidden />
+											<div className="relative p-5 sm:p-6 flex flex-col gap-5 sm:gap-6">
+												<div className="flex items-center justify-between gap-3 flex-wrap">
+													<div className="flex items-center gap-3">
+														<span className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 grid place-items-center text-lg font-semibold">🔥</span>
+														<div>
+															<p className="text-sm font-semibold text-slate-800">Prediksi Ketinggian Air</p>
+															<p className="text-xs text-slate-500">Perangkat {activeDevice?.name ?? 'Data tidak ada'}</p>
+														</div>
+													</div>
+													<span
+														className={`px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide ${
+															(activePrediction?.toStatus || '').toLowerCase().includes('bahaya')
+																? 'bg-rose-100 text-rose-700'
+																: (activePrediction?.toStatus || '').toLowerCase().includes('siaga')
+																  ? 'bg-amber-100 text-amber-700'
+																  : 'bg-emerald-100 text-emerald-700'
+														}`}
+													>
+														{activePrediction.toStatus}
+													</span>
+												</div>
+
+												<div className="flex items-end gap-4 sm:gap-5">
+													<div className="leading-none">
+														<span className="text-6xl sm:text-7xl font-black text-slate-900 drop-shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+															{activePrediction.toWaterLevel}
+														</span>
+													</div>
+													<span className="text-2xl sm:text-3xl font-semibold text-slate-700 pb-2">cm</span>
+												</div>
+
+												<p className="text-xs sm:text-sm text-slate-600">
+													{`Perkiraan mencapai status ${activePrediction.toStatus} ${formatEta(activePrediction.estimatedMinutes)} (tren naik ${activePrediction.currentLevel} cm saat ini).`}
+												</p>
+											</div>
+										</div>
+									</div>
+								)}
 							</div>
 						</>
 					)}

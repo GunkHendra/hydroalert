@@ -12,6 +12,17 @@ type Notification = {
   time?: string
 }
 
+type PredictionState = {
+  deviceID: string
+  toStatus: string
+  toWaterLevel: number
+  estimatedMinutes: number
+  currentLevel: number
+  updatedAt?: string
+}
+
+const PREDICTION_CACHE_KEY = 'hydroalert_prediction_cache'
+
 type DashboardResponse = {
   success: boolean
   data: {
@@ -28,8 +39,11 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dashboard, setDashboard] = useState<DashboardResponse['data'] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [prediction, setPrediction] = useState<PredictionState | null>(null)
 
   const notifications = dashboard?.notifications ?? []
+  const shouldScrollNotifications = notifications.length > 2
+  const shouldShowPredictionCard = Boolean(prediction && prediction.estimatedMinutes <= 60)
 
   useEffect(() => {
     let isMounted = true
@@ -150,10 +164,96 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const socket = connectSocket()
+    const deviceID = dashboard?.deviceID
+
+    if (!deviceID) {
+      setPrediction(null)
+      return
+    }
+
+    // Restore cached prediction for this device (so browser refresh keeps last known prediction)
+    try {
+      const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
+      if (raw) {
+        const cache = JSON.parse(raw) as Record<string, PredictionState>
+        const cached = cache[deviceID]
+        if (cached) {
+          if (cached.estimatedMinutes <= 60) {
+            setPrediction(cached)
+          } else {
+            delete cache[deviceID]
+            localStorage.setItem(PREDICTION_CACHE_KEY, JSON.stringify(cache))
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load cached prediction', e)
+    }
+
+    const handlePrediction = (payload: any) => {
+      const pred = payload?.prediction
+      if (!pred || payload?.deviceID !== deviceID) return
+
+      const mapped: PredictionState = {
+        deviceID,
+        toStatus: pred.toStatus ?? 'Data tidak ada',
+        toWaterLevel: Number(pred.toWaterLevel) || 0,
+        estimatedMinutes: typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : 0,
+        currentLevel: Number(pred.waterLevel) || 0,
+        updatedAt: new Date().toISOString(),
+      }
+
+      if (mapped.estimatedMinutes > 60) {
+        setPrediction(null)
+        try {
+          const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
+          const cache = raw ? (JSON.parse(raw) as Record<string, PredictionState>) : {}
+          delete cache[deviceID]
+          localStorage.setItem(PREDICTION_CACHE_KEY, JSON.stringify(cache))
+        } catch (e) {
+          console.warn('Failed to cache prediction', e)
+        }
+        return
+      }
+
+      setPrediction(mapped)
+
+      // Cache per device so page refresh can restore the last known prediction
+      try {
+        const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
+        const cache = raw ? (JSON.parse(raw) as Record<string, PredictionState>) : {}
+        cache[deviceID] = mapped
+        localStorage.setItem(PREDICTION_CACHE_KEY, JSON.stringify(cache))
+      } catch (e) {
+        console.warn('Failed to cache prediction', e)
+      }
+    }
+
+    socket.emit('join_device', deviceID)
+    socket.on('water_level_prediction', handlePrediction)
+
+    return () => {
+      socket.off('water_level_prediction', handlePrediction)
+      socket.emit('leave_device', deviceID)
+    }
+  }, [dashboard?.deviceID])
+
   const formatUpdatedAt = (iso: string | undefined) => {
     if (!iso) return '-'
     const date = new Date(iso)
     return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const formatEta = (minutes: number | undefined) => {
+    if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return 'Perkiraan waktu tidak tersedia'
+    if (minutes < 1) return 'Kurang dari 1 menit'
+    if (minutes < 60) return `${minutes} menit lagi`
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    if (hours >= 24) return `${Math.floor(hours / 24)} hari ${hours % 24} jam lagi`
+    return mins ? `${hours} jam ${mins} menit lagi` : `${hours} jam lagi`
   }
 
   return (
@@ -177,6 +277,7 @@ function App() {
           {isLoading ? (
             <LoadingSkeleton variant="dashboard" />
           ) : (
+          <>
           <section className="grid gap-4 sm:gap-5 lg:gap-6">
             <div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 min-h-65">
               <div className="relative z-10 p-6 pt-7 flex flex-wrap items-center justify-between gap-4">
@@ -290,7 +391,7 @@ function App() {
                   </span>
                 </div>
 
-                <div className="space-y-3">
+                <div className={`space-y-3 ${shouldScrollNotifications ? 'max-h-64 overflow-y-auto pr-1' : ''}`}>
                   {notifications.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                       Data tidak ada
@@ -298,7 +399,7 @@ function App() {
                   ) : (
                     notifications.map((item, index) => (
                       <div
-                        key={item.title ?? index}
+                        key={`${item.title ?? 'notif'}-${index}`}
                         className={`rounded-xl border px-4 py-3 shadow-sm flex items-start justify-between gap-3 ${
                           item.status === 'normal'
                             ? 'border-emerald-200 bg-emerald-50/70'
@@ -325,6 +426,53 @@ function App() {
               </div>
             </div>
           </section>
+
+          {shouldShowPredictionCard && prediction && (
+            <section className="grid">
+              <div className="relative overflow-hidden rounded-2xl bg-white text-slate-900 shadow-sm border border-slate-200">
+                <div className="absolute inset-0 bg-linear-to-r from-rose-50 via-white to-slate-50" aria-hidden />
+                <div className="relative p-5 sm:p-6 flex flex-col gap-5 sm:gap-6">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <span className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 grid place-items-center text-lg font-semibold">🔥</span>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">Prediksi Ketinggian Air</p>
+                        <p className="text-xs text-slate-500">Perangkat {dashboard?.deviceID ?? 'Data tidak ada'}</p>
+                      </div>
+                    </div>
+                    {(() => {
+                      const statusLabel = prediction.toStatus || 'Data tidak ada'
+                      const lower = statusLabel.toLowerCase()
+                      const badgeClass = lower.includes('bahaya')
+                        ? 'bg-rose-100 text-rose-700'
+                        : lower.includes('siaga')
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-emerald-100 text-emerald-700'
+                      return (
+                        <span className={`px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide ${badgeClass}`}>
+                          {statusLabel}
+                        </span>
+                      )
+                    })()}
+                  </div>
+
+                  <div className="flex items-end gap-4 sm:gap-5">
+                    <div className="leading-none">
+                      <span className="text-6xl sm:text-7xl font-black text-slate-900 drop-shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+                        {prediction.toWaterLevel ?? 'Data tidak ada'}
+                      </span>
+                    </div>
+                    <span className="text-2xl sm:text-3xl font-semibold text-slate-700 pb-2">cm</span>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-slate-600">
+                    {`Perkiraan mencapai status ${prediction.toStatus} ${formatEta(prediction.estimatedMinutes)} (tren naik ${prediction.currentLevel} cm saat ini).`}
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+          </>
           )}
           </main>
 

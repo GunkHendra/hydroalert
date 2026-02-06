@@ -23,7 +23,7 @@ export function Sidebar({ items = defaultNavItems, isOpen = false, onClose }: { 
       <aside
         className={`fixed inset-y-0 left-0 z-30 w-60 bg-white border-r border-slate-200 flex flex-col shadow-lg transition-transform duration-200 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:static md:translate-x-0 md:shadow-none`}
+        } md:sticky md:top-16 md:h-[calc(100vh-4rem)] md:translate-x-0 md:shadow-none md:border-b md:border-slate-200 md:bg-white md:overflow-y-auto`}
       >
         <div className="px-4 pt-5 pb-3 text-xs font-semibold text-slate-500 uppercase tracking-[0.18em]">Menu Utama</div>
         <nav className="flex-1 px-3 pb-4 space-y-1 text-sm">

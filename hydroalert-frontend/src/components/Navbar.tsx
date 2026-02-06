@@ -2,7 +2,7 @@ import logo from '../assets/logo.svg'
 
 export function Navbar({ onMenuToggle, isMenuOpen }: { onMenuToggle?: () => void; isMenuOpen?: boolean }) {
   return (
-    <header className="sticky top-0 z-20 h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shadow-sm">
+    <header className="sticky top-0 z-40 h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shadow-sm">
       <div className="flex items-center gap-3">
         {onMenuToggle && (
           <button
