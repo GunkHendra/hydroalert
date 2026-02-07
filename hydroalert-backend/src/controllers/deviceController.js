@@ -9,6 +9,7 @@ import Notification from '../models/Notification.js';
 import { sendTelegramAlert } from '../services/telegramService.js';
 import { predictNextStatusTime } from '../services/predictionService.js';
 import { redisClient } from '../utils/redisClient.js';
+import { getWaterLevel } from '../utils/waterLevel.js';
 
 /**
  * @openapi
@@ -129,13 +130,15 @@ export const storeSensorData = async (req, res) => {
             }
         }
 
+        const waterLevelBasedOnRiverDepth = getWaterLevel(waterLevel);
+
         res.status(201).json({
             success: true,
-            message: 'Sensor data stored successfully',
-            status: getWaterStatus(waterLevel),
+            message: 'Sensor data stored successfully (water level has been calculated based on river depth)',
+            status: getWaterStatus(waterLevelBasedOnRiverDepth),
             data: {
                 deviceID: deviceID,
-                waterLevel: waterLevel,
+                waterLevel: waterLevelBasedOnRiverDepth,
                 rainIntensity: rainIntensity,
                 windSpeed: windSpeed,
             }

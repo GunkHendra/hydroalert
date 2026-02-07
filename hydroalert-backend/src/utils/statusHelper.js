@@ -1,8 +1,8 @@
 export const STATUS_THRESHOLDS = {
-    Bahaya: 180,
-    "Siaga 1": 120,
-    "Siaga 2": 90,
-    Waspada: 60,
+    Bahaya: 400,
+    "Siaga 1": 310,
+    "Siaga 2": 270,
+    Waspada: 235,
 }
 
 export const getWaterStatus = (waterLevel) => {
