@@ -184,7 +184,7 @@ export default function Riwayat() {
 		const fetchNotifications = async () => {
 			setIsLoading(true)
 			try {
-				const res = await axios.get<NotificationsResponse>('http://localhost:3000/api/notifications')
+				const res = await axios.get<NotificationsResponse>(import.meta.env.VITE_NOTIFICATION_API_URL)
 				if (!isMounted) return
 				const { days: mappedDays, devices } = mapNotificationsToDayGroups(res.data?.data || {})
 				setDays(mappedDays)
@@ -323,7 +323,7 @@ export default function Riwayat() {
 								</div>
 							</header>
 
-										{isLoading && <p className="text-xs text-slate-500">Memuat notifikasi...</p>}
+							{isLoading && <p className="text-xs text-slate-500">Memuat notifikasi...</p>}
 
 							<div className="space-y-6 sm:space-y-8">
 								{filteredDays.length === 0 ? (
@@ -370,16 +370,16 @@ export default function Riwayat() {
 								)}
 							</div>
 						</div>
-						</main>
+					</main>
 
-						<footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/60 px-4 sm:px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
-							<a className="hover:text-slate-700" href="#">
-								About HydroAlert
-							</a>
-							<a className="hover:text-slate-700" href="#">
-								Contact Us
-							</a>
-						</footer>
+					<footer className="border-t border-slate-200 bg-white/80 backdrop-blur supports-backdrop-filter:bg-white/60 px-4 sm:px-8 py-4 text-sm text-slate-500 flex items-center justify-end gap-6">
+						<a className="hover:text-slate-700" href="#">
+							About HydroAlert
+						</a>
+						<a className="hover:text-slate-700" href="#">
+							Contact Us
+						</a>
+					</footer>
 				</div>
 			</div>
 		</div>

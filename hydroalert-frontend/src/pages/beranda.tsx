@@ -51,7 +51,7 @@ function App() {
     const fetchDashboard = async () => {
       setIsLoading(true)
       try {
-        const res = await axios.get<DashboardResponse>('http://localhost:3000/api/dashboard')
+        const res = await axios.get<DashboardResponse>(import.meta.env.VITE_BERANDA_API_URL)
         if (isMounted && res.data?.data) {
           const mappedNotifications = (res.data.data.notifications || []).map((item) => {
             const severity = (item as any).severity as string | undefined

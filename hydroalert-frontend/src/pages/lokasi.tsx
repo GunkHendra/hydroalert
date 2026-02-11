@@ -85,7 +85,7 @@ export default function Lokasi() {
     const fetchMonitoring = async () => {
       setIsLoading(true)
       try {
-        const res = await axios.get<MonitoringResponse>('http://localhost:3000/api/monitoring')
+        const res = await axios.get<MonitoringResponse>(import.meta.env.VITE_LOCATION_API_URL)
         if (!isMounted) return
         const mapped = mapSensors(res.data?.devices || [])
         setSensors(mapped)

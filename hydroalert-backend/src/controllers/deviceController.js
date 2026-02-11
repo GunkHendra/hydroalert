@@ -97,7 +97,8 @@ export const registerDevice = async (req, res) => {
  *         description: Server Error
  */
 export const storeSensorData = async (req, res) => {
-    const { deviceID, rainIntensity, waterLevel, windSpeed } = req.body;
+    const { deviceID, rainIntensity, windSpeed } = req.body;
+    let { waterLevel } = req.body;
 
     if (!deviceID || waterLevel === undefined || rainIntensity === undefined || windSpeed === undefined) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -130,15 +131,15 @@ export const storeSensorData = async (req, res) => {
             }
         }
 
-        const waterLevelBasedOnRiverDepth = getWaterLevel(waterLevel);
+        waterLevel = getWaterLevel(waterLevel);
 
         res.status(201).json({
             success: true,
             message: 'Sensor data stored successfully (water level has been calculated based on river depth)',
-            status: getWaterStatus(waterLevelBasedOnRiverDepth),
+            status: getWaterStatus(waterLevel),
             data: {
                 deviceID: deviceID,
-                waterLevel: waterLevelBasedOnRiverDepth,
+                waterLevel: waterLevel,
                 rainIntensity: rainIntensity,
                 windSpeed: windSpeed,
             }
