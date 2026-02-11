@@ -71,6 +71,11 @@ io.on('connection', (socket) => {
     console.log(`[Socket] User ${socket.id} joined the Notifications room`);
   });
 
+  socket.on('leave_notifications', () => {
+    socket.leave('notifications');
+    console.log(`[Socket] User ${socket.id} left the Notifications room`);
+  });
+
   socket.on('disconnect', () => {
     console.log('[Socket] User Disconnected');
   });
