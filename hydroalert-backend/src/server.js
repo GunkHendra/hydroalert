@@ -10,8 +10,8 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import swaggerJsdoc from 'swagger-jsdoc';
-import swaggerUi from 'swagger-ui-express';
+// import swaggerJsdoc from 'swagger-jsdoc';
+// import swaggerUi from 'swagger-ui-express';
 import './utils/cronJob.js'; // Import cron jobs  
 
 const __filename = fileURLToPath(import.meta.url);
@@ -83,28 +83,28 @@ mongoose.connect(MONGO_URI)
   .catch(err => console.error('MongoDB Connection Error:', err));
 
 // Swagger Setup
-const swaggerOptions = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'Flood Alert System API',
-      version: '1.0.0',
-      description: 'API for monitoring water levels, managing IoT devices, and alerts.',
-    },
-    servers: [
-      { url: 'https://hydroalert.my.id' }, // Production
-      { url: 'http://localhost:5000' }     // Local
-    ],
-  },
-  apis: ['./src/controllers/*.js'], // This points to your controllers
-};
+// const swaggerOptions = {
+//   definition: {
+//     openapi: '3.0.0',
+//     info: {
+//       title: 'Flood Alert System API',
+//       version: '1.0.0',
+//       description: 'API for monitoring water levels, managing IoT devices, and alerts.',
+//     },
+//     servers: [
+//       { url: 'https://hydroalert.my.id' }, // Production
+//       { url: 'http://localhost:5000' }     // Local
+//     ],
+//   },
+//   apis: ['./src/controllers/*.js'], // This points to your controllers
+// };
 
-const swaggerDocs = swaggerJsdoc(swaggerOptions);
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-app.get('/api-docs-json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerDocs);
-});
+// const swaggerDocs = swaggerJsdoc(swaggerOptions);
+// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+// app.get('/api-docs-json', (req, res) => {
+//   res.setHeader('Content-Type', 'application/json');
+//   res.send(swaggerDocs);
+// });
 
 // Routes
 app.use('/api/device', deviceRoutes);
