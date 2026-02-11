@@ -9,7 +9,7 @@ type Notification = {
 	description: string
 	time: string
 	ago: string
-	status: 'normal' | 'warning' | 'info'
+	status: 'normal' | 'waspada' | 'siaga' | 'bahaya' | 'info'
 }
 
 type DayGroup = {
@@ -38,7 +38,7 @@ type NotificationsResponse = {
 	data: Record<string, NotificationBucket>
 }
 
-const statusOptions: Array<Notification['status']> = ['normal', 'warning', 'info']
+const statusOptions: Array<Notification['status']> = ['normal', 'waspada', 'siaga', 'bahaya', 'info']
 
 const monthIndex: Record<string, number> = {}
 const monthNames: Array<Array<string>> = [
@@ -76,30 +76,46 @@ function formatDateISO(dateStr: string) {
 
 function statusClasses(status: Notification['status']) {
 	switch (status) {
-		case 'warning':
+		case 'bahaya':
+			return {
+				border: 'border-rose-300',
+				outline: 'ring-1 ring-rose-200',
+				badge: 'bg-rose-100 text-rose-700',
+			}
+		case 'siaga':
+			return {
+				border: 'border-orange-300',
+				outline: 'ring-1 ring-orange-200',
+				badge: 'bg-orange-100 text-orange-700',
+			}
+		case 'waspada':
 			return {
 				border: 'border-amber-300',
+				outline: 'ring-1 ring-amber-200',
 				badge: 'bg-amber-100 text-amber-700',
-				icon: 'text-amber-500 border-amber-200',
 			}
 		case 'info':
 			return {
 				border: 'border-sky-200',
+				outline: 'ring-1 ring-sky-200',
 				badge: 'bg-sky-100 text-sky-700',
-				icon: 'text-sky-500 border-sky-200',
 			}
 		default:
 			return {
 				border: 'border-emerald-300',
+				outline: 'ring-1 ring-emerald-200',
 				badge: 'bg-emerald-100 text-emerald-700',
-				icon: 'text-emerald-500 border-emerald-200',
 			}
 	}
 }
 
 const normalizeStatus = (severity?: string): Notification['status'] => {
 	const normalized = (severity || '').toLowerCase()
-	if (normalized === 'warning' || normalized === 'high' || normalized === 'critical') return 'warning'
+	if (normalized.includes('bahaya') || normalized.includes('darurat') || normalized === 'critical' || normalized === 'high') {
+		return 'bahaya'
+	}
+	if (normalized.includes('siaga') || normalized === 'warning') return 'siaga'
+	if (normalized.includes('waspada')) return 'waspada'
 	if (normalized === 'info') return 'info'
 	return 'normal'
 }
@@ -345,13 +361,10 @@ export default function Riwayat() {
 													return (
 														<div
 															key={`${day.date}-${item.title}-${item.time}`}
-															className={`rounded-2xl border bg-white px-4 py-3 shadow-sm ${styles.border}`}
+															className={`rounded-2xl border bg-white px-4 py-3 shadow-sm ${styles.border} ${styles.outline}`}
 														>
 															<div className="flex items-start justify-between gap-3">
 																<div className="flex items-start gap-3">
-																	<span className={`mt-0.5 h-7 w-7 rounded-full border grid place-items-center text-sm font-semibold ${styles.icon}`}>
-																		{item.status === 'warning' ? '⚠' : item.status === 'info' ? 'ℹ' : '✓'}
-																	</span>
 																	<div className="space-y-0.5">
 																		<p className="text-sm font-semibold text-slate-800">{item.title}</p>
 																		<p className="text-xs text-slate-500">{item.device}</p>

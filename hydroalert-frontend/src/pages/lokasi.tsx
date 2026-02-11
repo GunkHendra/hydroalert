@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
+import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { Navbar } from '../components/Navbar'
 import { Sidebar } from '../components/Sidebar'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
@@ -27,6 +30,8 @@ type Sensor = {
   unit?: string
   updatedAt: string
   location: string
+  latitude?: number
+  longitude?: number
 }
 
 const normalizeStatus = (status?: string): string => {
@@ -43,6 +48,24 @@ const formatLocation = (location: LocationValue): string => {
     if (typeof latitude === 'number' && typeof longitude === 'number') return `Lat ${latitude.toFixed(4)}, Lon ${longitude.toFixed(4)}`
   }
   return 'Data tidak ada'
+}
+
+const extractLatLng = (location: LocationValue): { latitude?: number; longitude?: number } => {
+  if (location && typeof location === 'object') {
+    const { latitude, longitude } = location
+    if (typeof latitude === 'number' && typeof longitude === 'number') return { latitude, longitude }
+  }
+  if (typeof location === 'string') {
+    const matches = location.match(/-?\d+(?:\.\d+)?/g)
+    if (matches && matches.length >= 2) {
+      const latitude = Number(matches[0])
+      const longitude = Number(matches[1])
+      const validLat = Number.isFinite(latitude) && Math.abs(latitude) <= 90
+      const validLon = Number.isFinite(longitude) && Math.abs(longitude) <= 180
+      if (validLat && validLon) return { latitude, longitude }
+    }
+  }
+  return {}
 }
 
 const formatAgo = (iso?: string) => {
@@ -62,6 +85,7 @@ const formatAgo = (iso?: string) => {
 const mapSensors = (payload: MonitoringDeviceAPI[]): Sensor[] =>
   payload.map((device) => {
     const level = device.water?.level
+    const coords = extractLatLng(device.location)
     return {
       name: device.deviceID ?? 'Data tidak ada',
       status: normalizeStatus(device.water?.status),
@@ -69,15 +93,35 @@ const mapSensors = (payload: MonitoringDeviceAPI[]): Sensor[] =>
       unit: typeof level === 'number' ? 'cm' : undefined,
       updatedAt: formatAgo(device.water?.updatedAt || device.lastActive),
       location: formatLocation(device.location),
+      latitude: coords.latitude,
+      longitude: coords.longitude,
     }
   })
+
+const defaultMarkerIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+})
 
 export default function Lokasi() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sensors, setSensors] = useState<Sensor[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const primaryLocation = sensors[0]?.location || 'Data tidak ada'
-  const lastUpdatedLabel = sensors[0]?.updatedAt || 'Data tidak ada'
+  const primarySensor =
+    sensors.find((sensor) => typeof sensor.latitude === 'number' && typeof sensor.longitude === 'number') || sensors[0]
+  const primaryLocation = primarySensor?.location || 'Data tidak ada'
+  const lastUpdatedLabel = primarySensor?.updatedAt || 'Data tidak ada'
+  const mapSensorsWithCoords = sensors.filter(
+    (sensor) => typeof sensor.latitude === 'number' && typeof sensor.longitude === 'number'
+  )
+  const mapCenter = mapSensorsWithCoords.length
+    ? ([mapSensorsWithCoords[0].latitude!, mapSensorsWithCoords[0].longitude!] as [number, number])
+    : ([-6.2, 106.816666] as [number, number])
 
   useEffect(() => {
     let isMounted = true
@@ -168,14 +212,30 @@ export default function Lokasi() {
                     </div>
                     <div className="relative bg-slate-100">
                       <div className="relative w-full" style={{ paddingTop: '65%' }}>
-                        <iframe
-                          src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d1412.9869120280778!2d115.19615081775672!3d-8.694315793914992!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sen!2sid!4v1769101621008!5m2!1sen!2sid"
-                          className="absolute inset-0 h-full w-full border-0"
-                          title="Peta Lokasi Sensor"
-                          loading="lazy"
-                          referrerPolicy="no-referrer-when-downgrade"
-                          allowFullScreen
-                        />
+                        <div className="absolute inset-0">
+                          <MapContainer center={mapCenter} zoom={12} className="h-full w-full">
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                            {mapSensorsWithCoords.map((sensor) => (
+                              <Marker
+                                key={`marker-${sensor.name}`}
+                                position={[sensor.latitude!, sensor.longitude!]}
+                                icon={defaultMarkerIcon}
+                              >
+                                <Popup>
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-semibold">{sensor.name}</p>
+                                    <p className="text-xs">{sensor.location}</p>
+                                    <p className="text-xs">Status: {sensor.status}</p>
+                                    <p className="text-xs">Ketinggian: {sensor.waterLevel}</p>
+                                  </div>
+                                </Popup>
+                              </Marker>
+                            ))}
+                          </MapContainer>
+                        </div>
                       </div>
                       <div className="absolute bottom-4 left-4 rounded-xl bg-white/90 backdrop-blur border border-slate-200 shadow-sm p-4 text-sm text-slate-700">
                         <p className="font-semibold text-slate-800 mb-2">Legend Status</p>
