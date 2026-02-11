@@ -10,6 +10,8 @@ type Notification = {
   description: string
   status: 'normal' | 'warning'
   time?: string
+  dateLabel?: string
+  dateISO?: string
 }
 
 type PredictionState = {
@@ -41,7 +43,14 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [prediction, setPrediction] = useState<PredictionState | null>(null)
 
-  const notifications = dashboard?.notifications ?? []
+  const notifications: Notification[] = (dashboard?.notifications ?? []).map((item) => ({
+    title: item.title ?? 'Notifikasi',
+    description: item.description ?? '- ',
+    status: item.status ?? 'normal',
+    time: item.time,
+    dateLabel: item.dateLabel,
+    dateISO: item.dateISO,
+  }))
   const shouldScrollNotifications = notifications.length > 2
   const shouldShowPredictionCard = Boolean(prediction && prediction.estimatedMinutes <= 60)
 
@@ -62,6 +71,8 @@ function App() {
               description: (item as any).description ?? (item as any).message ?? '-',
               status: severity && severity.toLowerCase() !== 'normal' ? 'warning' : 'normal',
               time: createdAt ? formatUpdatedAt(createdAt) : undefined,
+              dateLabel: createdAt ? formatDateLabel(createdAt) : undefined,
+              dateISO: createdAt ? new Date(createdAt).toISOString().slice(0, 10) : undefined,
             } as Notification
           })
 
@@ -138,6 +149,8 @@ function App() {
         description: notif?.message ?? notif?.description ?? '-',
         status: severity && severity.toLowerCase() !== 'normal' ? 'warning' : 'normal',
         time: createdAt ? formatUpdatedAt(createdAt) : undefined,
+        dateLabel: createdAt ? formatDateLabel(createdAt) : undefined,
+        dateISO: createdAt ? new Date(createdAt).toISOString().slice(0, 10) : undefined,
       }
 
       setDashboard((prev) => {
@@ -246,6 +259,12 @@ function App() {
     return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
   }
 
+  const formatDateLabel = (iso: string | undefined) => {
+    if (!iso) return 'Tanggal tidak diketahui'
+    const date = new Date(iso)
+    return date.toLocaleDateString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  }
+
   const formatEta = (minutes: number | undefined) => {
     if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return 'Perkiraan waktu tidak tersedia'
     if (minutes < 1) return 'Kurang dari 1 menit'
@@ -255,6 +274,22 @@ function App() {
     if (hours >= 24) return `${Math.floor(hours / 24)} hari ${hours % 24} jam lagi`
     return mins ? `${hours} jam ${mins} menit lagi` : `${hours} jam lagi`
   }
+
+  const notificationGroups = notifications.reduce(
+    (acc, item) => {
+      const key = item.dateISO ?? 'unknown'
+      if (!acc.order.includes(key)) acc.order.push(key)
+      if (!acc.groups[key]) {
+        acc.groups[key] = {
+          label: item.dateLabel ?? 'Tanggal tidak diketahui',
+          items: [],
+        }
+      }
+      acc.groups[key].items.push(item)
+      return acc
+    },
+    { order: [] as string[], groups: {} as Record<string, { label: string; items: Notification[] }> }
+  )
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
@@ -397,30 +432,42 @@ function App() {
                       Data tidak ada
                     </div>
                   ) : (
-                    notifications.map((item, index) => (
-                      <div
-                        key={`${item.title ?? 'notif'}-${index}`}
-                        className={`rounded-xl border px-4 py-3 shadow-sm flex items-start justify-between gap-3 ${
-                          item.status === 'normal'
-                            ? 'border-emerald-200 bg-emerald-50/70'
-                            : 'border-orange-200 bg-orange-50/80'
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <p className="text-sm font-semibold text-slate-800">{item.title}</p>
-                          <p className="text-xs text-slate-600">{item.description}</p>
+                    notificationGroups.order.map((groupKey) => {
+                      const group = notificationGroups.groups[groupKey]
+                      return (
+                        <div key={`notif-group-${groupKey}`} className="space-y-2">
+                          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            <span className="h-px flex-1 bg-slate-200" />
+                            <span>{group.label}</span>
+                            <span className="h-px flex-1 bg-slate-200" />
+                          </div>
+                          {group.items.map((item, index) => (
+                            <div
+                              key={`${item.title ?? 'notif'}-${groupKey}-${index}`}
+                              className={`rounded-xl border px-4 py-3 shadow-sm flex items-start justify-between gap-3 ${
+                                item.status === 'normal'
+                                  ? 'border-emerald-200 bg-emerald-50/70'
+                                  : 'border-orange-200 bg-orange-50/80'
+                              }`}
+                            >
+                              <div className="space-y-1">
+                                <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+                                <p className="text-xs text-slate-600">{item.description}</p>
+                              </div>
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${
+                                  item.status === 'normal'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-orange-100 text-orange-700'
+                                }`}
+                              >
+                                {item.time ?? 'Data tidak ada'}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                        <span
-                          className={`text-[11px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${
-                            item.status === 'normal'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-orange-100 text-orange-700'
-                          }`}
-                        >
-                          {item.time ?? 'Data tidak ada'}
-                        </span>
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </div>
