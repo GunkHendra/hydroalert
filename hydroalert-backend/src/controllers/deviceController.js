@@ -104,6 +104,9 @@ export const storeSensorData = async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Calculate water level based on river depth and raw sensor reading
+    waterLevel = getWaterLevel(waterLevel);
+
     const io = req.app.get('socketio'); // Retrieve io instance
 
     try {
@@ -120,6 +123,7 @@ export const storeSensorData = async (req, res) => {
         // First Sanity Check
         const lastReadingKey = `last_raw:${deviceID}`;
         const lastRaw = await redisClient.get(lastReadingKey);
+        console.log(`[Debug] Last raw data for ${deviceID}:`, lastRaw ? JSON.parse(lastRaw) : null, `Current raw water level: ${waterLevel}cm`);
 
         if (lastRaw) {
             const last = JSON.parse(lastRaw);
@@ -131,7 +135,6 @@ export const storeSensorData = async (req, res) => {
             }
         }
 
-        waterLevel = getWaterLevel(waterLevel);
 
         res.status(201).json({
             success: true,
