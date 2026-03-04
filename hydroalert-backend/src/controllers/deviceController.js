@@ -306,10 +306,10 @@ const handleNotification = async (req, deviceID, status, avgWaterlevel) => {
 
     if (shouldNotify) {
         const titleMap = {
-            'Waspada': '⚠️ Peringatan Waspada',
-            'Siaga 2': '🟠 Peringatan Siaga 2',
-            'Siaga 1': '🔴 Peringatan Siaga 1',
-            'Bahaya': '🆘 DARURAT: Status Bahaya'
+            'Waspada': 'Peringatan Waspada ⚠️',
+            'Siaga 1': 'Peringatan Siaga 1 🟠',
+            'Siaga 2': 'Peringatan Siaga 2 🔴',
+            'Bahaya': 'DARURAT: Status Bahaya 🆘'
         };
 
         // Use a helper to avoid undefined messages if status doesn't match perfectly
@@ -334,16 +334,11 @@ const handleNotification = async (req, deviceID, status, avgWaterlevel) => {
 
         io.to('notifications').emit('new_notification', newNotif);
 
-        // 4. Construct Telegram Message with better formatting
+        // Construct Telegram Message with better formatting
         const telegramMessage = `
-📢 ${title}
-━━━━━━━━━━━━━━
-🆔 ID Device: ${deviceID}
-🌊 Rata-rata ketinggian (1 menit terakhir): ${avgWaterlevel.toFixed(1)} cm
-📊 Status: ${status}
-🕒 Waktu: ${new Date().toLocaleString('id-ID')}
-
-📝 ${message}
+${title}
+${message}
+Waktu: ${new Date().toLocaleString('id-ID')}
 `;
 
         sendTelegramAlert(telegramMessage);
