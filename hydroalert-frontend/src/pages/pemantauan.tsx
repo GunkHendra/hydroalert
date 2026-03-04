@@ -20,6 +20,7 @@ type MonitoringDeviceAPI = {
 	water: { level: number; status: string; updatedAt: string }
 	wind: { speed: number }
 	rain: { intensity: number }
+	prediction?: BackendPrediction | null
 	imageUrl?: string
 }
 
@@ -59,13 +60,26 @@ type Device = {
 	cameraImage: string
 }
 
+type BackendPrediction = {
+	fromStatus?: string
+	toStatus?: string
+	waterLevel?: number
+	toWaterLevel?: number
+	estimatedMinutes?: number
+	adjustedRiseRate?: number | string
+}
+
 type PredictionState = {
 	deviceID: string
+	fromStatus: string
 	toStatus: string
-	toWaterLevel: number
+	toWaterLevel: number | null
 	estimatedMinutes: number
-	currentLevel: number
+	currentLevel: number | null
+	riseRate: number | null
 }
+
+const PREDICTION_MAX_MINUTES = 120
 
 const computeWaterBadge = (status?: string) => {
 	const label = status ? status.toUpperCase() : '---'
@@ -187,13 +201,33 @@ const mapMonitoringDevices = (payload: MonitoringDeviceAPI[]): Device[] => {
 	})
 }
 
+const normalizePrediction = (deviceID: string, pred?: BackendPrediction | null): PredictionState | null => {
+	if (!pred) return null
+	const estimated = typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : Number(pred.estimatedMinutes ?? NaN)
+	if (!Number.isFinite(estimated) || estimated <= 0 || estimated > PREDICTION_MAX_MINUTES) return null
+
+	const toWaterLevel = typeof pred.toWaterLevel === 'number' ? pred.toWaterLevel : Number(pred.toWaterLevel ?? NaN)
+	const currentLevel = typeof pred.waterLevel === 'number' ? pred.waterLevel : Number(pred.waterLevel ?? NaN)
+	const riseRate = typeof pred.adjustedRiseRate === 'number' ? pred.adjustedRiseRate : Number(pred.adjustedRiseRate ?? NaN)
+
+	return {
+		deviceID,
+		fromStatus: pred.fromStatus ?? 'Data Tidak Tersedia',
+		toStatus: pred.toStatus ?? 'Data Tidak Tersedia',
+		toWaterLevel: Number.isFinite(toWaterLevel) ? toWaterLevel : null,
+		estimatedMinutes: Math.round(estimated),
+		currentLevel: Number.isFinite(currentLevel) ? currentLevel : null,
+		riseRate: Number.isFinite(riseRate) ? riseRate : null,
+	}
+}
+
 export default function Pemantauan() {
 	const [devices, setDevices] = useState<Device[]>([])
 	const [activeDeviceId, setActiveDeviceId] = useState<string>()
 	const [isLoading, setIsLoading] = useState(false)
 	const [sidebarOpen, setSidebarOpen] = useState(false)
 	const [predictionMap, setPredictionMap] = useState<Record<string, PredictionState>>({})
-	const shouldShowActivePrediction = Boolean(predictionMap[activeDeviceId || ''] && predictionMap[activeDeviceId || ''].estimatedMinutes <= 60)
+	const shouldShowActivePrediction = Boolean(predictionMap[activeDeviceId || ''] && predictionMap[activeDeviceId || ''].estimatedMinutes <= PREDICTION_MAX_MINUTES)
 
 	useEffect(() => {
 		let isMounted = true
@@ -203,9 +237,17 @@ export default function Pemantauan() {
 			try {
 				const res = await axios.get<MonitoringResponse>(import.meta.env.VITE_MONITORING_API_URL)
 				if (!isMounted) return
-				const mapped = mapMonitoringDevices(res.data?.devices || [])
+				const payload = res.data?.devices || []
+				const mapped = mapMonitoringDevices(payload)
 				setDevices(mapped)
 				setActiveDeviceId((current) => (mapped.some((item) => item.id === current) ? current : mapped[0]?.id))
+
+				const initialPredictions = payload.reduce<Record<string, PredictionState>>((acc, device) => {
+					const normalized = normalizePrediction(device.deviceID, device.prediction)
+					if (normalized) acc[device.deviceID] = normalized
+					return acc
+				}, {})
+				setPredictionMap(initialPredictions)
 			} catch (error) {
 				console.error('Failed to fetch monitoring data', error)
 			} finally {
@@ -228,8 +270,8 @@ export default function Pemantauan() {
 	}, [activeDeviceId, devices])
 
 	const formatEta = (minutes?: number) => {
-		if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return 'Perkiraan waktu tidak tersedia'
-		if (minutes < 1) return 'Kurang dari 1 menit'
+		if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return '(Perkiraan waktu tidak tersedia)'
+		if (minutes < 1) return 'kurang dari 1 menit'
 		if (minutes < 60) return `${minutes} menit lagi`
 		const hours = Math.floor(minutes / 60)
 		const mins = minutes % 60
@@ -254,16 +296,9 @@ export default function Pemantauan() {
 		const handlePrediction = (payload: any) => {
 			const pred = payload?.prediction
 			const deviceID = payload?.deviceID
-			if (!pred || !deviceID) return
-			const mapped: PredictionState = {
-				deviceID,
-				toStatus: pred.toStatus ?? 'Data Tidak Tersedia',
-				toWaterLevel: Number(pred.toWaterLevel) || 0,
-				estimatedMinutes: typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : 0,
-				currentLevel: Number(pred.waterLevel) || 0,
-			}
-
-			if (mapped.estimatedMinutes > 60) {
+			if (!deviceID) return
+			const normalized = normalizePrediction(deviceID, pred)
+			if (!normalized) {
 				setPredictionMap((prev) => {
 					const next = { ...prev }
 					delete next[deviceID]
@@ -274,7 +309,7 @@ export default function Pemantauan() {
 
 			setPredictionMap((prev) => ({
 				...prev,
-				[deviceID]: mapped,
+				[deviceID]: normalized,
 			}))
 		}
 
@@ -300,6 +335,9 @@ export default function Pemantauan() {
 	}, [devices])
 
 	const activePrediction = activeDeviceId ? predictionMap[activeDeviceId] : undefined
+	const targetHeightLabel = typeof activePrediction?.toWaterLevel === 'number' ? `${activePrediction.toWaterLevel} cm` : 'Tidak diketahui'
+	const currentHeightLabel = typeof activePrediction?.currentLevel === 'number' ? `${activePrediction.currentLevel} cm` : 'Tidak diketahui'
+	const riseLabel = typeof activePrediction?.riseRate === 'number' ? `${activePrediction.riseRate.toFixed(2)} cm/menit` : 'Laju tidak diketahui'
 	const waterBadge = computeWaterBadge(activeDevice?.waterStatus)
 
 	const renderPlaceholder = (label = 'Data Tidak Tersedia', icon = '⧗') => (
@@ -504,21 +542,25 @@ export default function Pemantauan() {
 																	: 'bg-emerald-100 text-emerald-700'
 																}`}
 														>
-															{activePrediction.toStatus}
+															{activePrediction.toStatus || 'Data Tidak Tersedia'}
 														</span>
 													</div>
 
 													<div className="flex items-end gap-4 sm:gap-5">
 														<div className="leading-none">
-															<span className="text-6xl sm:text-7xl font-black text-slate-900 drop-shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
-																{activePrediction.toWaterLevel}
-															</span>
+															{typeof activePrediction.toWaterLevel === 'number' ? (
+																<span className="text-6xl sm:text-7xl font-black text-slate-900 drop-shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+																	{activePrediction.toWaterLevel}
+																</span>
+															) : (
+																<div className="pt-2">{renderPlaceholder('Data Tidak Tersedia', '⧗')}</div>
+															)}
 														</div>
 														<span className="text-2xl sm:text-3xl font-semibold text-slate-700 pb-2">cm</span>
 													</div>
 
 													<p className="text-xs sm:text-sm text-slate-600">
-														{`Perkiraan mencapai status ${activePrediction.toStatus} ${formatEta(activePrediction.estimatedMinutes)} (tren naik ${activePrediction.currentLevel} cm saat ini).`}
+														{`Perkiraan tinggi air akan naik dari status ${activePrediction.fromStatus} (${currentHeightLabel}) ke ${activePrediction.toStatus} (${targetHeightLabel}) dalam waktu ${formatEta(activePrediction.estimatedMinutes)}, dengan laju ${riseLabel}.`}
 													</p>
 												</div>
 											</div>

@@ -16,14 +16,26 @@ type Notification = {
 
 type PredictionState = {
   deviceID: string
+  fromStatus: string
   toStatus: string
-  toWaterLevel: number
+  toWaterLevel: number | null
   estimatedMinutes: number
-  currentLevel: number
+  currentLevel: number | null
+  riseRate: number | null
   updatedAt?: string
 }
 
 const PREDICTION_CACHE_KEY = 'hydroalert_prediction_cache'
+const PREDICTION_MAX_MINUTES = 120
+
+type BackendPrediction = {
+  fromStatus?: string
+  toStatus?: string
+  waterLevel?: number
+  toWaterLevel?: number
+  estimatedMinutes?: number
+  adjustedRiseRate?: number | string
+}
 
 type DashboardResponse = {
   success: boolean
@@ -34,6 +46,58 @@ type DashboardResponse = {
     rain: { intensity: number }
     devices: { total: number; active: number }
     notifications: Partial<Notification>[]
+    prediction?: BackendPrediction | null
+  }
+}
+
+const normalizePrediction = (deviceID: string | null | undefined, pred?: BackendPrediction | null): PredictionState | null => {
+  if (!deviceID || !pred) return null
+  const estimated = typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : Number(pred.estimatedMinutes ?? NaN)
+  if (!Number.isFinite(estimated) || estimated <= 0 || estimated > PREDICTION_MAX_MINUTES) return null
+
+  const toWaterLevel = typeof pred.toWaterLevel === 'number' ? pred.toWaterLevel : Number(pred.toWaterLevel ?? NaN)
+  const currentLevel = typeof pred.waterLevel === 'number' ? pred.waterLevel : Number(pred.waterLevel ?? NaN)
+  const riseRate = typeof pred.adjustedRiseRate === 'number' ? pred.adjustedRiseRate : Number(pred.adjustedRiseRate ?? NaN)
+
+  return {
+    deviceID,
+    fromStatus: pred.fromStatus ?? 'Data Tidak Tersedia',
+    toStatus: pred.toStatus ?? 'Data Tidak Tersedia',
+    toWaterLevel: Number.isFinite(toWaterLevel) ? toWaterLevel : null,
+    estimatedMinutes: Math.round(estimated),
+    currentLevel: Number.isFinite(currentLevel) ? currentLevel : null,
+    riseRate: Number.isFinite(riseRate) ? riseRate : null,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+const loadCachedPrediction = (deviceID: string): PredictionState | null => {
+  try {
+    const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
+    if (!raw) return null
+    const cache = JSON.parse(raw) as Record<string, PredictionState>
+    const cached = cache[deviceID]
+    if (!cached) return null
+    if (cached.estimatedMinutes > PREDICTION_MAX_MINUTES) return null
+    return cached
+  } catch (e) {
+    console.warn('Failed to load cached prediction', e)
+    return null
+  }
+}
+
+const writePredictionCache = (deviceID: string, prediction: PredictionState | null) => {
+  try {
+    const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
+    const cache = raw ? (JSON.parse(raw) as Record<string, PredictionState>) : {}
+    if (prediction) {
+      cache[deviceID] = prediction
+    } else {
+      delete cache[deviceID]
+    }
+    localStorage.setItem(PREDICTION_CACHE_KEY, JSON.stringify(cache))
+  } catch (e) {
+    console.warn('Failed to write cached prediction', e)
   }
 }
 
@@ -52,7 +116,7 @@ function App() {
     dateISO: item.dateISO,
   }))
   const shouldScrollNotifications = notifications.length > 2
-  const shouldShowPredictionCard = Boolean(prediction && prediction.estimatedMinutes <= 60)
+  const shouldShowPredictionCard = Boolean(prediction && prediction.estimatedMinutes <= PREDICTION_MAX_MINUTES)
 
   useEffect(() => {
     let isMounted = true
@@ -80,6 +144,20 @@ function App() {
             ...res.data.data,
             notifications: mappedNotifications,
           })
+
+          const deviceID = res.data.data.deviceID
+          if (deviceID) {
+            const normalized = normalizePrediction(deviceID, res.data.data.prediction)
+            if (normalized) {
+              setPrediction(normalized)
+              writePredictionCache(deviceID, normalized)
+            } else {
+              setPrediction(null)
+              writePredictionCache(deviceID, null)
+            }
+          } else {
+            setPrediction(null)
+          }
         }
       } catch (error) {
         console.error('Failed to fetch dashboard', error)
@@ -186,62 +264,23 @@ function App() {
       return
     }
 
-    // Restore cached prediction for this device (so browser refresh keeps last known prediction)
-    try {
-      const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
-      if (raw) {
-        const cache = JSON.parse(raw) as Record<string, PredictionState>
-        const cached = cache[deviceID]
-        if (cached) {
-          if (cached.estimatedMinutes <= 60) {
-            setPrediction(cached)
-          } else {
-            delete cache[deviceID]
-            localStorage.setItem(PREDICTION_CACHE_KEY, JSON.stringify(cache))
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load cached prediction', e)
-    }
+    const cached = loadCachedPrediction(deviceID)
+    if (cached) setPrediction(cached)
 
     const handlePrediction = (payload: any) => {
       const pred = payload?.prediction
       if (!pred || payload?.deviceID !== deviceID) return
 
-      const mapped: PredictionState = {
-        deviceID,
-        toStatus: pred.toStatus ?? 'Data Tidak Tersedia',
-        toWaterLevel: Number(pred.toWaterLevel) || 0,
-        estimatedMinutes: typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : 0,
-        currentLevel: Number(pred.waterLevel) || 0,
-        updatedAt: new Date().toISOString(),
-      }
+      const normalized = normalizePrediction(deviceID, pred)
 
-      if (mapped.estimatedMinutes > 60) {
+      if (!normalized) {
         setPrediction(null)
-        try {
-          const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
-          const cache = raw ? (JSON.parse(raw) as Record<string, PredictionState>) : {}
-          delete cache[deviceID]
-          localStorage.setItem(PREDICTION_CACHE_KEY, JSON.stringify(cache))
-        } catch (e) {
-          console.warn('Failed to cache prediction', e)
-        }
+        writePredictionCache(deviceID, null)
         return
       }
 
-      setPrediction(mapped)
-
-      // Cache per device so page refresh can restore the last known prediction
-      try {
-        const raw = localStorage.getItem(PREDICTION_CACHE_KEY)
-        const cache = raw ? (JSON.parse(raw) as Record<string, PredictionState>) : {}
-        cache[deviceID] = mapped
-        localStorage.setItem(PREDICTION_CACHE_KEY, JSON.stringify(cache))
-      } catch (e) {
-        console.warn('Failed to cache prediction', e)
-      }
+      setPrediction(normalized)
+      writePredictionCache(deviceID, normalized)
     }
 
     socket.emit('join_device', deviceID)
@@ -266,8 +305,8 @@ function App() {
   }
 
   const formatEta = (minutes: number | undefined) => {
-    if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return 'Perkiraan waktu tidak tersedia'
-    if (minutes < 1) return 'Kurang dari 1 menit'
+    if (minutes === undefined || minutes === null || Number.isNaN(minutes)) return '(Perkiraan waktu tidak tersedia)'
+    if (minutes < 1) return 'kurang dari 1 menit'
     if (minutes < 60) return `${minutes} menit lagi`
     const hours = Math.floor(minutes / 60)
     const mins = minutes % 60
@@ -322,6 +361,9 @@ function App() {
   const rainVisuals = computeRainVisuals(dashboard?.rain.intensity)
   const waterBadge = computeWaterBadge(dashboard?.water.status)
   const deviceBadge = computeDeviceBadge(dashboard?.devices.total, dashboard?.devices.active)
+  const targetHeightLabel = typeof prediction?.toWaterLevel === 'number' ? `${prediction.toWaterLevel} cm` : 'Tidak diketahui'
+  const currentHeightLabel = typeof prediction?.currentLevel === 'number' ? `${prediction.currentLevel} cm` : 'Tidak diketahui'
+  const riseLabel = typeof prediction?.riseRate === 'number' ? `${prediction.riseRate.toFixed(2)} cm/menit` : 'Laju tidak diketahui'
 
   const renderPlaceholder = (label = 'Data Tidak Tersedia', icon = '⧗') => (
     <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold px-3 py-1 border border-slate-200">
@@ -588,15 +630,19 @@ function App() {
 
                         <div className="flex items-end gap-4 sm:gap-5">
                           <div className="leading-none">
-                            <span className="text-6xl sm:text-7xl font-black text-slate-900 drop-shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
-                              {prediction.toWaterLevel ?? 'Data Tidak Tersedia'}
-                            </span>
+                            {typeof prediction.toWaterLevel === 'number' ? (
+                              <span className="text-6xl sm:text-7xl font-black text-slate-900 drop-shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+                                {prediction.toWaterLevel}
+                              </span>
+                            ) : (
+                              <div className="pt-2">{renderPlaceholder('Data Tidak Tersedia', '⧗')}</div>
+                            )}
                           </div>
                           <span className="text-2xl sm:text-3xl font-semibold text-slate-700 pb-2">cm</span>
                         </div>
 
                         <p className="text-xs sm:text-sm text-slate-600">
-                          {`Perkiraan mencapai status ${prediction.toStatus} ${formatEta(prediction.estimatedMinutes)} (tren naik ${prediction.currentLevel} cm saat ini).`}
+                          {`Perkiraan tinggi air akan naik dari status ${prediction.fromStatus} (${currentHeightLabel}) ke ${prediction.toStatus} (${targetHeightLabel}) dalam waktu ${formatEta(prediction.estimatedMinutes)}, dengan laju ${riseLabel}.`}
                         </p>
                       </div>
                     </div>
