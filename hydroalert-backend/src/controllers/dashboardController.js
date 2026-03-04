@@ -83,8 +83,8 @@ export const getDashboardData = async (req, res) => {
             data: {
                 deviceID: worstData?.deviceID || null,
                 water: {
-                    level: worstData?.waterLevel || 0,
-                    status: worstData?.status || 'Normal',
+                    level: worstData?.waterLevel || null,
+                    status: worstData?.status || null,
                     updatedAt: worstData?.updatedAt || null
                 },
                 wind: { speed: worstData?.windSpeed || 0 },
@@ -179,8 +179,8 @@ export const getMonitoringData = async (req, res) => {
                 location: device.location,
                 lastActive: device.lastActive,
                 water: {
-                    level: sensorData?.waterLevel || 0,
-                    status: sensorData?.status || 'Normal',
+                    level: sensorData?.waterLevel || null,
+                    status: sensorData?.status || null,
                     updatedAt: sensorData?.updatedAt || null
                 },
                 wind: { speed: sensorData?.windSpeed || 0 },

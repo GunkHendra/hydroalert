@@ -1,7 +1,7 @@
 export const STATUS_THRESHOLDS = {
     Bahaya: 400,
-    "Siaga 1": 310,
-    "Siaga 2": 270,
+    "Siaga 2": 310,
+    "Siaga 1": 270,
     Waspada: 235,
 }
 
