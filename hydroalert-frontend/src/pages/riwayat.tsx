@@ -256,9 +256,9 @@ export default function Riwayat() {
 				<div className="flex-1 flex flex-col">
 					<main className="flex-1 p-4 sm:p-6 lg:p-8">
 						<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 sm:p-6 space-y-5 sm:space-y-6">
-							<header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+							<header className="flex flex-wrap items-center justify-between gap-3">
 								<p className="text-lg sm:text-xl font-semibold text-slate-800">Riwayat Notifikasi</p>
-								<div className="relative self-end sm:self-auto">
+								<div className="relative">
 									<button
 										onClick={() => setFilterOpen((prev) => !prev)}
 										type="button"

@@ -21,7 +21,7 @@ export function Sidebar({ items = defaultNavItems, isOpen = false, onClose }: { 
   return (
     <>
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-60 bg-white border-r border-slate-200 flex flex-col shadow-lg transition-transform duration-200 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-1200 w-60 bg-white border-r border-slate-200 flex flex-col shadow-lg transition-transform duration-200 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } md:sticky md:top-16 md:h-[calc(100vh-4rem)] md:translate-x-0 md:shadow-none md:border-b md:border-slate-200 md:bg-white md:overflow-y-auto`}
       >
@@ -55,7 +55,14 @@ export function Sidebar({ items = defaultNavItems, isOpen = false, onClose }: { 
         </nav>
       </aside>
 
-      {isOpen && <button type="button" aria-label="Tutup menu" className="fixed inset-0 z-20 bg-slate-900/40 backdrop-blur-sm md:hidden" onClick={onClose} />}
+      {isOpen && (
+        <button
+          type="button"
+          aria-label="Tutup menu"
+          className="fixed inset-0 z-1100 bg-slate-900/40 backdrop-blur-sm md:hidden"
+          onClick={onClose}
+        />
+      )}
     </>
   )
 }

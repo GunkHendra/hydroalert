@@ -31,10 +31,11 @@ type MonitoringResponse = {
 
 type DeviceMetric = {
 	label: string
-	value: number
+	value: number | null
 	unit: string
 	statusLabel: string
 	scaleFill: number
+	kind: 'wind' | 'rain'
 	trend: string
 	detail: string
 }
@@ -43,7 +44,7 @@ type Device = {
 	id: string
 	name: string
 	heroLabel: string
-	heroValue: number
+	heroValue: number | null
 	heroUnit: string
 	statusLabel: string
 	updatedAt: string
@@ -53,7 +54,8 @@ type Device = {
 	metrics: DeviceMetric[]
 	cameraTime: string
 	location: string
-	coordinates: string
+	lat?: number
+	lon?: number
 	cameraImage: string
 }
 
@@ -65,12 +67,38 @@ type PredictionState = {
 	currentLevel: number
 }
 
-const getBadgeClass = (status?: string) => {
-	const lower = (status || '').toLowerCase()
-	if (lower.includes('bahaya')) return 'bg-rose-100 text-rose-700'
-	if (lower.includes('siaga') || lower.includes('warning') || lower.includes('waspada')) return 'bg-amber-100 text-amber-700'
-	if (lower.includes('normal')) return 'bg-emerald-100 text-emerald-700'
-	return 'bg-slate-100 text-slate-600'
+const computeWaterBadge = (status?: string) => {
+	const label = status ? status.toUpperCase() : '---'
+	const lower = (status || '').toLowerCase().trim()
+	const isMissing = !lower || lower === 'data tidak tersedia' || lower === 'tidak ada data' || lower === 'n/a' || lower === 'unknown'
+	if (isMissing) return { label: '---', badgeClass: 'bg-slate-200 text-slate-700 border border-slate-300 shadow-sm' }
+	if (lower.includes('bahaya') || lower.includes('danger')) {
+		return { label, badgeClass: 'bg-linear-to-r from-red-500 to-orange-500 text-white border border-orange-100 shadow-orange-600/40' }
+	}
+	if (lower.includes('siaga') || lower.includes('warning') || lower.includes('waspada')) {
+		return { label, badgeClass: 'bg-linear-to-r from-amber-400 to-orange-500 text-white border border-amber-100 shadow-amber-500/40' }
+	}
+	return { label, badgeClass: 'bg-linear-to-r from-emerald-500 to-teal-500 text-white border border-emerald-100 shadow-emerald-600/30' }
+}
+
+const computeWindVisuals = (speed?: number) => {
+	if (typeof speed !== 'number' || Number.isNaN(speed)) {
+		return { label: 'Data Tidak Tersedia', badgeClass: 'bg-slate-200 text-slate-500', barWidth: 0 }
+	}
+	if (speed <= 0) return { label: 'Tidak ada angin', badgeClass: 'bg-slate-200 text-slate-600', barWidth: 0 }
+	if (speed < 10) return { label: 'Tenang', badgeClass: 'bg-emerald-100 text-emerald-700', barWidth: 25 }
+	if (speed < 20) return { label: 'Sedang', badgeClass: 'bg-amber-100 text-amber-700', barWidth: 55 }
+	return { label: 'Kencang', badgeClass: 'bg-rose-100 text-rose-700', barWidth: 85 }
+}
+
+const computeRainVisuals = (intensity?: number) => {
+	if (typeof intensity !== 'number' || Number.isNaN(intensity)) {
+		return { label: 'Data Tidak Tersedia', badgeClass: 'bg-slate-200 text-slate-500', barWidth: 0 }
+	}
+	if (intensity <= 0) return { label: 'Tidak ada hujan', badgeClass: 'bg-slate-200 text-slate-600', barWidth: 0 }
+	if (intensity < 2) return { label: 'Gerimis', badgeClass: 'bg-emerald-100 text-emerald-700', barWidth: 30 }
+	if (intensity < 10) return { label: 'Sedang', badgeClass: 'bg-amber-100 text-amber-700', barWidth: 60 }
+	return { label: 'Lebat', badgeClass: 'bg-rose-100 text-rose-700', barWidth: 90 }
 }
 
 const formatTime = (iso?: string) => {
@@ -93,65 +121,67 @@ const formatAgo = (iso?: string) => {
 	return `${days} hari lalu`
 }
 
-const scaleFill = (value: number, max = 100) => Math.min(100, Math.round(((value || 0) / max) * 100))
-
-const formatLocation = (location: LocationValue): { location: string; coordinates: string } => {
+const formatLocation = (location: LocationValue): { location: string; lat?: number; lon?: number } => {
 	if (typeof location === 'string' && location.trim().length) {
-		return { location, coordinates: '-' }
+		return { location }
 	}
 	if (location && typeof location === 'object') {
-		const lat = location.latitude ?? null
-		const lon = location.longitude ?? null
-		const hasCoords = lat !== null && lon !== null
+		const lat = location.latitude
+		const lon = location.longitude
+		const hasCoords = typeof lat === 'number' && typeof lon === 'number'
 		return {
 			location: hasCoords ? `Lat: ${lat}, Lon: ${lon}` : 'Lokasi tidak diketahui',
-			coordinates: hasCoords ? `${lat}, ${lon}` : '-',
+			lat: hasCoords ? lat : undefined,
+			lon: hasCoords ? lon : undefined,
 		}
 	}
-	return { location: 'Lokasi tidak diketahui', coordinates: '-' }
+	return { location: 'Lokasi tidak diketahui' }
 }
 
 const mapMonitoringDevices = (payload: MonitoringDeviceAPI[]): Device[] => {
 	return payload.map((device) => {
-		const waterStatus = device.water.status || 'Data tidak ada'
-		const windStatus = (device as any).wind?.status ?? 'Data tidak ada'
-		const rainStatus = (device as any).rain?.status ?? 'Data tidak ada'
+		const waterStatus = device.water.status || 'Data Tidak Tersedia'
+		const windVisual = computeWindVisuals(device.wind.speed)
+		const rainVisual = computeRainVisuals(device.rain.intensity)
 		const updatedAt = device.water.updatedAt || device.lastActive
-		const { location, coordinates } = formatLocation(device.location)
+		const { location, lat, lon } = formatLocation(device.location)
 		return {
 			id: device.deviceID || 'unknown-device',
 			name: device.deviceID || 'Perangkat',
 			heroLabel: 'Ketinggian Air Sungai',
-			heroValue: device.water.level ?? 0,
+			heroValue: typeof device.water.level === 'number' ? device.water.level : null,
 			heroUnit: 'cm',
 			statusLabel: waterStatus,
 			updatedAt: formatTime(updatedAt),
 			waterStatus,
-			windStatus,
-			rainStatus,
+			windStatus: windVisual.label,
+			rainStatus: rainVisual.label,
 			metrics: [
 				{
 					label: 'Kecepatan Angin',
-					value: device.wind.speed ?? 0,
+					value: typeof device.wind.speed === 'number' ? device.wind.speed : null,
 					unit: 'km/jam',
-					statusLabel: windStatus,
-					scaleFill: scaleFill(device.wind.speed ?? 0, 60),
+					statusLabel: windVisual.label,
+					scaleFill: windVisual.barWidth,
+					kind: 'wind',
 					trend: '',
 					detail: `Terakhir aktif ${formatAgo(device.lastActive)}`,
 				},
 				{
 					label: 'Debit Air Hujan',
-					value: device.rain.intensity ?? 0,
+					value: typeof device.rain.intensity === 'number' ? device.rain.intensity : null,
 					unit: 'mm/jam',
-					statusLabel: rainStatus,
-					scaleFill: scaleFill(device.rain.intensity ?? 0, 80),
+					statusLabel: rainVisual.label,
+					scaleFill: rainVisual.barWidth,
+					kind: 'rain',
 					trend: '',
 					detail: `Diperbarui ${formatAgo(device.water.updatedAt)}`,
 				},
 			],
 			cameraTime: formatTime(device.lastActive),
 			location,
-			coordinates,
+			lat,
+			lon,
 			cameraImage: device.imageUrl ?? '',
 		}
 	})
@@ -227,7 +257,7 @@ export default function Pemantauan() {
 			if (!pred || !deviceID) return
 			const mapped: PredictionState = {
 				deviceID,
-				toStatus: pred.toStatus ?? 'Data tidak ada',
+				toStatus: pred.toStatus ?? 'Data Tidak Tersedia',
 				toWaterLevel: Number(pred.toWaterLevel) || 0,
 				estimatedMinutes: typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : 0,
 				currentLevel: Number(pred.waterLevel) || 0,
@@ -270,6 +300,15 @@ export default function Pemantauan() {
 	}, [devices])
 
 	const activePrediction = activeDeviceId ? predictionMap[activeDeviceId] : undefined
+	const waterBadge = computeWaterBadge(activeDevice?.waterStatus)
+
+	const renderPlaceholder = (label = 'Data Tidak Tersedia', icon = '⧗') => (
+		<span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold px-3 py-1 border border-slate-200">
+			<span aria-hidden>{icon}</span>
+			<span>{label}</span>
+		</span>
+	)
+
 
 	return (
 		<div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
@@ -283,7 +322,10 @@ export default function Pemantauan() {
 						{isLoading ? (
 							<LoadingSkeleton variant="monitoring" />
 						) : !activeDevice ? (
-							<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-sm text-slate-600">Data tidak ada</div>
+							<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-sm text-slate-600 flex items-center gap-2">
+								<span aria-hidden>🔍</span>
+								<span>Data perangkat belum tersedia</span>
+							</div>
 						) : (
 							<>
 								<div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 sm:p-6 space-y-5 sm:space-y-6">
@@ -324,20 +366,28 @@ export default function Pemantauan() {
 											<div className="space-y-2">
 												<p className="text-sm font-semibold text-slate-800">{activeDevice.heroLabel}</p>
 												<div className="flex items-end gap-3">
-													<span className="text-3xl sm:text-5xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.2)]">{activeDevice.heroValue}</span>
-													<span className="text-base sm:text-xl font-semibold text-slate-700">{activeDevice.heroUnit}</span>
+													{typeof activeDevice.heroValue === 'number' ? (
+														<>
+															<span className="text-3xl sm:text-5xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.2)]">{activeDevice.heroValue}</span>
+															<span className="text-base sm:text-xl font-semibold text-slate-700">{activeDevice.heroUnit}</span>
+														</>
+													) : (
+														<div className='pt-2'>
+															{renderPlaceholder('Data Tidak Tersedia', '🌊')}
+														</div>
+													)}
 												</div>
 											</div>
 
-											<div className="flex-1 flex justify-end self-center">
-												<div
-													className={`flex items-center gap-3 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full shadow-lg border ${getBadgeClass(activeDevice.waterStatus)} border-transparent`}
-												>
-													<span className="text-sm sm:text-base font-black uppercase tracking-[0.18em] text-slate-900">
-														{activeDevice.waterStatus}
-													</span>
+											{waterBadge.label !== '---' && (
+												<div className="flex-1 flex justify-end self-center">
+													<div className={`flex items-center gap-3 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full shadow-lg ${waterBadge.badgeClass}`}>
+														<span className="text-sm sm:text-base font-black uppercase tracking-[0.18em] drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
+															{waterBadge.label}
+														</span>
+													</div>
 												</div>
-											</div>
+											)}
 										</div>
 
 										<div className="absolute inset-0">
@@ -351,72 +401,84 @@ export default function Pemantauan() {
 									</div>
 
 									<div className="grid gap-4 sm:gap-5 lg:gap-6 lg:grid-cols-2">
-										{activeDevice.metrics.map((metric) => (
-											<div key={metric.label} className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
-												<div className="flex items-start justify-between">
-													<div>
-														<p className="text-sm text-slate-500">{metric.label}</p>
-														<div className="flex items-end gap-2">
-															<span className="text-4xl font-semibold text-slate-900">{metric.value}</span>
-															<span className="text-base text-slate-500">{metric.unit}</span>
+										{activeDevice.metrics.map((metric) => {
+											const visuals = metric.kind === 'wind' ? computeWindVisuals(metric.value ?? undefined) : computeRainVisuals(metric.value ?? undefined)
+											const barColor = metric.kind === 'wind' ? 'bg-purple-500' : 'bg-sky-500'
+											return (
+												<div key={metric.label} className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
+													<div className="flex items-start justify-between">
+														<div>
+															<p className="text-sm text-slate-500">{metric.label}</p>
+															<div className="flex items-end gap-2">
+																{typeof metric.value === 'number' ? (
+																	<>
+																		<span className="text-4xl font-semibold text-slate-900">{metric.value}</span>
+																		<span className="text-base text-slate-500">{metric.unit}</span>
+																	</>
+																) : (
+																	<div className='pt-3'>
+																		{renderPlaceholder('Data Tidak Tersedia', metric.kind === 'wind' ? '🍃' : '🌧️')}
+																	</div>
+																)}
+															</div>
 														</div>
+														{visuals.label !== 'Data Tidak Tersedia' && (
+															<span className={`px-3 py-1 rounded-full text-xs font-semibold ${visuals.badgeClass}`}>
+																{visuals.label}
+															</span>
+														)}
 													</div>
-													<span className={`px-3 py-1 rounded-full text-xs font-semibold ${getBadgeClass(metric.statusLabel)}`}>
-														{metric.statusLabel}
-													</span>
+													<div className="h-1.5 rounded-full bg-slate-100">
+														<div className={`h-full rounded-full ${barColor}`} style={{ width: `${visuals.barWidth}%` }} />
+													</div>
+													<div className="flex justify-between text-xs text-slate-500">
+														<span>Level rendah</span>
+														<span>Level tinggi</span>
+													</div>
+													<div className="flex items-center gap-4 text-xs text-slate-500" />
 												</div>
-												<div className="h-1.5 rounded-full bg-slate-100">
-													<div
-														className={`h-full rounded-full ${getBadgeClass(metric.statusLabel).includes('emerald') ? 'bg-sky-500' : 'bg-amber-500'}`}
-														style={{ width: `${metric.scaleFill}%` }}
-													/>
-												</div>
-												<div className="flex justify-between text-xs text-slate-500">
-													<span>Level rendah</span>
-													<span>Level tinggi</span>
-												</div>
-												<div className="flex items-center gap-4 text-xs text-slate-500">
-												</div>
-											</div>
-										))}
+											)
+										})}
 									</div>
 
 									<div className="grid gap-4 sm:gap-5 lg:gap-6 xl:grid-cols-3">
-										<div className="xl:col-span-2 rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden">
+										<div className="rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden">
 											<div className="flex items-center justify-between px-4 py-3 bg-sky-500 text-white text-sm font-semibold">
 												<div className="flex items-center gap-2">
-													<span className="h-5 w-5 rounded-full bg-white/20 grid place-items-center text-[10px] text-slate-900 font-bold">CAM</span>
 													<span>Live Camera Feed</span>
 												</div>
-												<span className="text-xs font-semibold text-red-100">LIVE</span>
 											</div>
-											<div className="h-64 bg-slate-100 overflow-hidden">
+											<div className="bg-slate-100 overflow-hidden relative w-full" style={{ aspectRatio: '16 / 9', maxHeight: '360px' }}>
 												{activeDevice.cameraImage ? (
-													<img src={activeDevice.cameraImage} alt="Live camera feed" className="h-full w-full object-cover" />
+													<img src={activeDevice.cameraImage} alt="Live camera feed" className="absolute inset-0 h-full w-full object-cover" />
 												) : (
-													<div className="h-full w-full grid place-items-center text-xs text-slate-500">Tidak ada gambar</div>
+													<div className="absolute inset-0 grid place-items-center text-xs text-slate-500">Tidak ada gambar</div>
 												)}
-											</div>
-											<div className="px-4 py-3 text-xs text-slate-600 flex items-center justify-between">
-												<span>
-													{activeDevice.name} - {activeDevice.location}
-												</span>
-												<span className="text-slate-500">{activeDevice.cameraTime}</span>
 											</div>
 										</div>
 
-										<div className="rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+										<div className="xl:col-span-2 rounded-2xl bg-white shadow-sm border border-slate-200 overflow-hidden flex flex-col">
 											<div className="flex items-center justify-between px-4 py-3 bg-emerald-500 text-white text-sm font-semibold">
 												<div className="flex items-center gap-2">
-													<span className="h-5 w-5 rounded-full bg-white/20 grid place-items-center text-[10px] text-slate-900 font-bold">MAP</span>
 													<span>Lokasi Sensor</span>
 												</div>
-												<span className="text-xs text-white/80">{activeDevice.name}</span>
 											</div>
-											<div className="flex-1 h-56 bg-slate-100 grid place-items-center text-sm text-slate-500">Peta disematkan di sini</div>
-											<div className="px-4 py-3 text-xs text-slate-600 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-												<p>{activeDevice.location}</p>
-												<p className="text-slate-500">Koordinat: {activeDevice.coordinates}</p>
+											<div className="flex-1 h-56 bg-slate-100 overflow-hidden">
+												{typeof activeDevice.lat === 'number' && typeof activeDevice.lon === 'number' ? (
+													<iframe
+														title={`Lokasi ${activeDevice.name}`}
+														src={`https://www.google.com/maps?q=${activeDevice.lat},${activeDevice.lon}&z=14&output=embed`}
+														className="h-full w-full border-0"
+														loading="lazy"
+														allowFullScreen
+													/>
+												) : (
+													<div className="h-full w-full grid place-items-center text-sm text-slate-500">Lokasi tidak diketahui</div>
+												)}
+											</div>
+											<div className="px-4 py-3 text-xs text-slate-600 flex gap-2">
+												<p>Latitude: {activeDevice.lat}</p>
+												<p>Longitude: {activeDevice.lon}</p>
 											</div>
 										</div>
 									</div>
@@ -431,7 +493,7 @@ export default function Pemantauan() {
 															<span className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 grid place-items-center text-lg font-semibold">🔥</span>
 															<div>
 																<p className="text-sm font-semibold text-slate-800">Prediksi Ketinggian Air</p>
-																<p className="text-xs text-slate-500">Perangkat {activeDevice?.name ?? 'Data tidak ada'}</p>
+																<p className="text-xs text-slate-500">Perangkat {activeDevice?.name ?? 'Data Tidak Tersedia'}</p>
 															</div>
 														</div>
 														<span

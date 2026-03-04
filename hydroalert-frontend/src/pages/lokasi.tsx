@@ -38,7 +38,7 @@ const normalizeStatus = (status?: string): string => {
   const normalized = (status || '').toLowerCase()
   if (normalized === 'warning' || normalized === 'bahaya' || normalized === 'waspada') return 'Waspada'
   if (normalized === 'normal') return 'Normal'
-  return 'Data tidak ada'
+  return 'Data Tidak Tersedia'
 }
 
 const formatLocation = (location: LocationValue): string => {
@@ -47,7 +47,7 @@ const formatLocation = (location: LocationValue): string => {
     const { latitude, longitude } = location
     if (typeof latitude === 'number' && typeof longitude === 'number') return `Lat ${latitude.toFixed(4)}, Lon ${longitude.toFixed(4)}`
   }
-  return 'Data tidak ada'
+  return 'Data Tidak Tersedia'
 }
 
 const extractLatLng = (location: LocationValue): { latitude?: number; longitude?: number } => {
@@ -69,7 +69,7 @@ const extractLatLng = (location: LocationValue): { latitude?: number; longitude?
 }
 
 const formatAgo = (iso?: string) => {
-  if (!iso) return 'Data tidak ada'
+  if (!iso) return 'Data Tidak Tersedia'
   const now = Date.now()
   const past = new Date(iso).getTime()
   const diffMs = now - past
@@ -87,9 +87,9 @@ const mapSensors = (payload: MonitoringDeviceAPI[]): Sensor[] =>
     const level = device.water?.level
     const coords = extractLatLng(device.location)
     return {
-      name: device.deviceID ?? 'Data tidak ada',
+      name: device.deviceID ?? 'Data Tidak Tersedia',
       status: normalizeStatus(device.water?.status),
-      waterLevel: typeof level === 'number' ? level : 'Data tidak ada',
+      waterLevel: typeof level === 'number' ? level : 'Data Tidak Tersedia',
       unit: typeof level === 'number' ? 'cm' : undefined,
       updatedAt: formatAgo(device.water?.updatedAt || device.lastActive),
       location: formatLocation(device.location),
@@ -114,8 +114,8 @@ export default function Lokasi() {
   const [isLoading, setIsLoading] = useState(false)
   const primarySensor =
     sensors.find((sensor) => typeof sensor.latitude === 'number' && typeof sensor.longitude === 'number') || sensors[0]
-  const primaryLocation = primarySensor?.location || 'Data tidak ada'
-  const lastUpdatedLabel = primarySensor?.updatedAt || 'Data tidak ada'
+  const primaryLocation = primarySensor?.location || 'Data Tidak Tersedia'
+  const lastUpdatedLabel = primarySensor?.updatedAt || 'Data Tidak Tersedia'
   const mapSensorsWithCoords = sensors.filter(
     (sensor) => typeof sensor.latitude === 'number' && typeof sensor.longitude === 'number'
   )
@@ -262,38 +262,46 @@ export default function Lokasi() {
 
                     <div className="space-y-3">
                       {sensors.length === 0 ? (
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Data tidak ada</div>
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 flex items-center gap-2">
+                          <span aria-hidden>📡</span>
+                          <span>Data sensor belum tersedia</span>
+                        </div>
                       ) : (
                         sensors.map((sensor) => {
                           const isNormal = sensor.status === 'Normal'
+                          const isEmptyData = sensor.status === 'Data Tidak Tersedia'
                           return (
                             <div
                               key={sensor.name}
-                              className={`rounded-2xl border p-4 shadow-sm flex flex-col gap-3 ${
-                                isNormal ? 'border-emerald-200' : 'border-amber-200'
-                              }`}
+                              className={`rounded-2xl border p-4 shadow-sm flex flex-col gap-3 ${isNormal ? 'border-emerald-200' : isEmptyData ? 'border-slate-200' : 'border-amber-200'
+                                }`}
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-sm font-semibold text-slate-800">{sensor.name}</p>
                                   <p className="text-xs text-slate-500">{sensor.location}</p>
                                 </div>
-                                <span
-                                  className={`text-[10px] sm:text-[11px] font-semibold px-3 py-1 rounded-full ${
-                                    isNormal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                                  }`}
-                                >
-                                  {sensor.status}
-                                </span>
+                                {sensor.status !== 'Data Tidak Tersedia' && (
+                                  <span
+                                    className={`text-[10px] sm:text-[11px] font-semibold px-3 py-1 rounded-full ${isNormal ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                      }`}
+                                  >
+                                    {sensor.status}
+                                  </span>
+                                )}
                               </div>
 
                               <div className="rounded-xl bg-linear-to-r from-sky-500 to-blue-600 text-white px-3 sm:px-4 py-3 flex items-center justify-between">
                                 <div>
-                                  <p className="text-xs uppercase tracking-[0.18em] text-white/80">Ketinggian Air</p>
+                                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/80">Ketinggian Air</p>
                                   <div className="flex items-end gap-2">
-                                    <span className="text-3xl sm:text-4xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.25)]">{sensor.waterLevel}</span>
-                                    {typeof sensor.waterLevel === 'number' && sensor.unit && (
-                                      <span className="text-base sm:text-lg font-semibold">{sensor.unit}</span>
+                                    {typeof sensor.waterLevel === 'number' ? (
+                                      <>
+                                        <span className="text-3xl sm:text-4xl font-black leading-none drop-shadow-[0_6px_18px_rgba(0,0,0,0.25)]">{sensor.waterLevel}</span>
+                                        {sensor.unit && <span className="text-base sm:text-lg font-semibold">{sensor.unit}</span>}
+                                      </>
+                                    ) : (
+                                      <span className="text-sm font-bold text-white">DATA TIDAK TERSEDIA</span>
                                     )}
                                   </div>
                                 </div>

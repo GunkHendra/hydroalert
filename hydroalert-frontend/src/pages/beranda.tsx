@@ -211,7 +211,7 @@ function App() {
 
       const mapped: PredictionState = {
         deviceID,
-        toStatus: pred.toStatus ?? 'Data tidak ada',
+        toStatus: pred.toStatus ?? 'Data Tidak Tersedia',
         toWaterLevel: Number(pred.toWaterLevel) || 0,
         estimatedMinutes: typeof pred.estimatedMinutes === 'number' ? pred.estimatedMinutes : 0,
         currentLevel: Number(pred.waterLevel) || 0,
@@ -277,7 +277,7 @@ function App() {
 
   const computeWindVisuals = (speed: number | undefined) => {
     if (typeof speed !== 'number' || Number.isNaN(speed)) {
-      return { label: 'Data tidak ada', badgeClass: 'bg-slate-200 text-slate-500', barWidth: '0%' }
+      return { label: 'Data Tidak Tersedia', badgeClass: 'bg-slate-200 text-slate-500', barWidth: '0%' }
     }
     if (speed <= 0) return { label: 'Tidak ada angin', badgeClass: 'bg-slate-200 text-slate-500', barWidth: '0%' }
     if (speed < 10) return { label: 'Tenang', badgeClass: 'bg-emerald-100 text-emerald-700', barWidth: '25%' }
@@ -287,7 +287,7 @@ function App() {
 
   const computeRainVisuals = (intensity: number | undefined) => {
     if (typeof intensity !== 'number' || Number.isNaN(intensity)) {
-      return { label: 'Data tidak ada', badgeClass: 'bg-slate-200 text-slate-500', barWidth: '0%' }
+      return { label: 'Data Tidak Tersedia', badgeClass: 'bg-slate-200 text-slate-500', barWidth: '0%' }
     }
     if (intensity <= 0) return { label: 'Tidak ada hujan', badgeClass: 'bg-slate-200 text-slate-500', barWidth: '0%' }
     if (intensity < 2) return { label: 'Gerimis', badgeClass: 'bg-emerald-100 text-emerald-700', barWidth: '30%' }
@@ -296,7 +296,7 @@ function App() {
   }
 
   const computeWaterBadge = (status: string | undefined) => {
-    const label = status ? status.toUpperCase() : 'DATA TIDAK ADA'
+    const label = status ? status.toUpperCase() : '---'
     if (!status) return { label, badgeClass: 'bg-slate-200 text-slate-700 border border-slate-300 shadow-sm' }
     const lower = status.toLowerCase()
     if (lower.includes('bahaya') || lower.includes('danger')) {
@@ -310,7 +310,7 @@ function App() {
 
   const computeDeviceBadge = (total: number | undefined, active: number | undefined) => {
     if (typeof total !== 'number' || Number.isNaN(total) || total <= 0) {
-      return { label: 'Data tidak ada', badgeClass: 'bg-slate-200 text-slate-700' }
+      return { label: 'Data Tidak Tersedia', badgeClass: 'bg-slate-200 text-slate-700' }
     }
     const percent = Math.max(0, Math.min(100, Math.round(((typeof active === 'number' ? active : 0) / total) * 100)))
     if (percent >= 80) return { label: `${percent}%`, badgeClass: 'bg-emerald-100 text-emerald-700' }
@@ -322,6 +322,13 @@ function App() {
   const rainVisuals = computeRainVisuals(dashboard?.rain.intensity)
   const waterBadge = computeWaterBadge(dashboard?.water.status)
   const deviceBadge = computeDeviceBadge(dashboard?.devices.total, dashboard?.devices.active)
+
+  const renderPlaceholder = (label = 'Data Tidak Tersedia', icon = '⧗') => (
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold px-3 py-1 border border-slate-200">
+      <span aria-hidden>{icon}</span>
+      <span>{label}</span>
+    </span>
+  )
 
   const notificationGroups = notifications.reduce(
     (acc, item) => {
@@ -348,12 +355,12 @@ function App() {
 
         <div className="flex-1 flex flex-col">
           <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
-            <header className="flex items-center justify-between flex-wrap gap-2 sm:flex-nowrap sm:gap-3">
+            <header className="flex items-center justify-between flex-wrap gap-3 sm:flex-nowrap sm:gap-3">
               <div className="space-y-1">
                 <p className="text-sm sm:text-lg font-semibold text-slate-800 whitespace-nowrap">Ketinggian Air yang Patut Diwaspadai</p>
               </div>
-              <div className="text-sm sm:text-lg font-semibold text-slate-800 whitespace-nowrap">
-                {dashboard?.deviceID ? `Perangkat ${dashboard.deviceID}` : 'Data tidak ada'}
+              <div className="items-center gap-1 rounded-full bg-white text-sm sm:text-md font-semibold text-slate-800 whitespace-nowrap px-3 py-1 border border-slate-200">
+                {dashboard?.deviceID ? `Perangkat ${dashboard.deviceID}` : 'Data Tidak Tersedia'}
               </div>
             </header>
 
@@ -366,20 +373,26 @@ function App() {
                     <div className="relative z-10 p-6 pt-7 flex flex-wrap items-center justify-between gap-4">
                       <div className="space-y-2 self-start">
                         <div className="flex items-end gap-3">
-                          <span className="text-6xl font-black leading-none drop-shadow-[0_8px_24px_rgba(0,0,0,0.2)]">
-                            {dashboard?.water.level ?? 'Data tidak ada'}
-                          </span>
-                          {typeof dashboard?.water.level === 'number' && <span className="text-2xl font-semibold text-slate-700">cm</span>}
+                          {typeof dashboard?.water.level === 'number' ? (
+                            <>
+                              <span className="text-6xl font-black leading-none drop-shadow-[0_8px_24px_rgba(0,0,0,0.2)]">{dashboard.water.level}</span>
+                              <span className="text-2xl font-semibold text-slate-700">cm</span>
+                            </>
+                          ) : (
+                            renderPlaceholder('Data Tidak Tersedia', '🌊')
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex-1 flex justify-end self-center">
-                        <div className={`flex items-center gap-3 px-7 py-3 rounded-full shadow-lg ${waterBadge.badgeClass}`}>
-                          <span className="text-lg font-black uppercase tracking-[0.2em] drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
-                            {waterBadge.label}
-                          </span>
+                      {waterBadge.label !== '---' && (
+                        <div className="flex-1 flex justify-end self-center">
+                          <div className={`flex items-center gap-3 px-7 py-3 rounded-full shadow-lg ${waterBadge.badgeClass}`}>
+                            <span className="text-lg font-black uppercase tracking-[0.2em] drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
+                              {waterBadge.label}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
 
                     <div className="absolute inset-0">
@@ -396,7 +409,7 @@ function App() {
                     </div>
 
                     <p className="absolute bottom-3 left-6 z-10 text-xs text-white">
-                      Terakhir diperbaharui: {dashboard?.water.updatedAt ? formatUpdatedAt(dashboard.water.updatedAt) : 'Data tidak ada'}
+                      Terakhir diperbaharui: {dashboard?.water.updatedAt ? formatUpdatedAt(dashboard.water.updatedAt) : '-'}
                     </p>
                   </div>
 
@@ -406,16 +419,30 @@ function App() {
                         <div>
                           <p className="text-sm text-slate-500">Kecepatan Angin</p>
                           <div className="flex items-end gap-2">
-                            <span className="text-4xl font-semibold text-slate-900">{dashboard?.wind.speed ?? 'Data tidak ada'}</span>
-                            {typeof dashboard?.wind.speed === 'number' && <span className="text-base text-slate-500">km/jam</span>}
+                            {typeof dashboard?.wind.speed === 'number' ? (
+                              <>
+                                <span className="text-4xl font-semibold text-slate-900">{dashboard.wind.speed}</span>
+                                <span className="text-base text-slate-500">km/jam</span>
+                              </>
+                            ) : (
+                              <div className='pt-3'>
+                                {renderPlaceholder('Data Tidak Tersedia', '🍃')}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${windVisuals.badgeClass}`}>
-                          {windVisuals.label}
-                        </span>
+                        {windVisuals.label !== 'Data Tidak Tersedia' && (
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${windVisuals.badgeClass}`}>
+                            {windVisuals.label}
+                          </span>
+                        )}
                       </div>
                       <div className="h-1.5 rounded-full bg-slate-100">
                         <div className="h-full rounded-full bg-purple-500" style={{ width: windVisuals.barWidth }} />
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Level rendah</span>
+                        <span>Level tinggi</span>
                       </div>
                     </div>
 
@@ -424,28 +451,48 @@ function App() {
                         <div>
                           <p className="text-sm text-slate-500">Debit Air Hujan</p>
                           <div className="flex items-end gap-2">
-                            <span className="text-4xl font-semibold text-slate-900">{dashboard?.rain.intensity ?? 'Data tidak ada'}</span>
-                            {typeof dashboard?.rain.intensity === 'number' && <span className="text-base text-slate-500">mm/jam</span>}
+                            {typeof dashboard?.rain.intensity === 'number' ? (
+                              <>
+                                <span className="text-4xl font-semibold text-slate-900">{dashboard.rain.intensity}</span>
+                                <span className="text-base text-slate-500">mm/jam</span>
+                              </>
+                            ) : (
+                              <div className='pt-3'>
+                                {renderPlaceholder('Data Tidak Tersedia', '🌧️')}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${rainVisuals.badgeClass}`}>
-                          {rainVisuals.label}
-                        </span>
+                        {rainVisuals.label !== 'Data Tidak Tersedia' && (
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${rainVisuals.badgeClass}`}>
+                            {rainVisuals.label}
+                          </span>
+                        )}
                       </div>
                       <div className="h-1.5 rounded-full bg-slate-100">
                         <div className="h-full rounded-full bg-sky-500" style={{ width: rainVisuals.barWidth }} />
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Level rendah</span>
+                        <span>Level tinggi</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="grid gap-4 sm:gap-5 lg:gap-6 lg:grid-cols-2">
-                    <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4 min-h-70">
+                    <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-4">
                       <div className="flex items-start justify-between">
                         <div className="space-y-7">
                           <p className="text-sm text-slate-500">Jumlah Alat Aktif</p>
                           <div className="flex items-end gap-2">
-                            <span className="text-4xl font-semibold text-slate-900">{dashboard?.devices.active ?? 'Data tidak ada'}</span>
-                            <span className="text-base text-slate-500">/ {dashboard?.devices.total ?? 'Data tidak ada'}</span>
+                            {typeof dashboard?.devices.active === 'number' && typeof dashboard?.devices.total === 'number' ? (
+                              <>
+                                <span className="text-4xl font-semibold text-slate-900">{dashboard.devices.active}</span>
+                                <span className="text-base text-slate-500">/ {dashboard.devices.total}</span>
+                              </>
+                            ) : (
+                              renderPlaceholder('Data Perangkat Tidak Tersedia', '🔌')
+                            )}
                           </div>
                           <p className="text-xs text-slate-500">Unit Sensor</p>
 
@@ -454,8 +501,6 @@ function App() {
                           {deviceBadge.label}
                         </span>
                       </div>
-                      <div className="flex-1" />
-                      <div className="text-xs text-slate-600">Data perangkat tidak ada</div>
                     </div>
 
                     <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-4 sm:p-5 space-y-3">
@@ -469,7 +514,7 @@ function App() {
                       <div className={`space-y-3 ${shouldScrollNotifications ? 'max-h-64 overflow-y-auto pr-1' : ''}`}>
                         {notifications.length === 0 ? (
                           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                            Data tidak ada
+                            Data Tidak Tersedia
                           </div>
                         ) : (
                           notificationGroups.order.map((groupKey) => {
@@ -499,7 +544,7 @@ function App() {
                                         : 'bg-orange-100 text-orange-700'
                                         }`}
                                     >
-                                      {item.time ?? 'Data tidak ada'}
+                                      {item.time ?? 'Data Tidak Tersedia'}
                                     </span>
                                   </div>
                                 ))}
@@ -522,11 +567,11 @@ function App() {
                             <span className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 grid place-items-center text-lg font-semibold">🔥</span>
                             <div>
                               <p className="text-sm font-semibold text-slate-800">Prediksi Ketinggian Air</p>
-                              <p className="text-xs text-slate-500">Perangkat {dashboard?.deviceID ?? 'Data tidak ada'}</p>
+                              <p className="text-xs text-slate-500">Perangkat {dashboard?.deviceID ?? 'Data Tidak Tersedia'}</p>
                             </div>
                           </div>
                           {(() => {
-                            const statusLabel = prediction.toStatus || 'Data tidak ada'
+                            const statusLabel = prediction.toStatus || 'Data Tidak Tersedia'
                             const lower = statusLabel.toLowerCase()
                             const badgeClass = lower.includes('bahaya')
                               ? 'bg-rose-100 text-rose-700'
@@ -544,7 +589,7 @@ function App() {
                         <div className="flex items-end gap-4 sm:gap-5">
                           <div className="leading-none">
                             <span className="text-6xl sm:text-7xl font-black text-slate-900 drop-shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
-                              {prediction.toWaterLevel ?? 'Data tidak ada'}
+                              {prediction.toWaterLevel ?? 'Data Tidak Tersedia'}
                             </span>
                           </div>
                           <span className="text-2xl sm:text-3xl font-semibold text-slate-700 pb-2">cm</span>
