@@ -81,14 +81,14 @@ export const getDashboardData = async (req, res) => {
         res.json({
             success: true,
             data: {
-                deviceID: worstData?.deviceID || null,
+                deviceID: worstData?.deviceID ?? null,
                 water: {
-                    level: worstData?.waterLevel || null,
-                    status: worstData?.status || null,
-                    updatedAt: worstData?.updatedAt || null
+                    level: worstData?.waterLevel ?? null,
+                    status: worstData?.status ?? null,
+                    updatedAt: worstData?.updatedAt ?? null
                 },
-                wind: { speed: worstData?.windSpeed || 0 },
-                rain: { intensity: worstData?.rainIntensity || 0 },
+                wind: { speed: worstData?.windSpeed ?? null },
+                rain: { intensity: worstData?.rainIntensity ?? null },
                 devices: {
                     total: devices.length,
                     active: activeDevices.length
@@ -167,25 +167,25 @@ export const getMonitoringData = async (req, res) => {
 
         // Combine all monitoring data
         const devicesMonitoring = devices.map(device => {
-            // Get sensor data from Redis
-            const sensorData = allDevicesRaw[device.deviceID]
-                ? JSON.parse(allDevicesRaw[device.deviceID])
-                : null;
+            const raw = allDevicesRaw[device.deviceID];
+            const parsed = raw ? JSON.parse(raw) : null;
+            const isFresh = parsed && new Date(parsed.updatedAt) >= fiveMinutesAgo;
+            const sensorData = isFresh ? parsed : null; // Ignore stale/inactive readings
 
-            const deviceImage = imageMap[device.deviceID]
+            const deviceImage = imageMap[device.deviceID];
 
             return {
                 deviceID: device.deviceID,
                 location: device.location,
                 lastActive: device.lastActive,
                 water: {
-                    level: sensorData?.waterLevel || null,
-                    status: sensorData?.status || null,
-                    updatedAt: sensorData?.updatedAt || null
+                    level: sensorData?.waterLevel ?? null,
+                    status: sensorData?.status ?? null,
+                    updatedAt: sensorData?.updatedAt ?? null
                 },
-                wind: { speed: sensorData?.windSpeed || 0 },
-                rain: { intensity: sensorData?.rainIntensity || 0 },
-                imageUrl: deviceImage || null
+                wind: { speed: sensorData?.windSpeed ?? null },
+                rain: { intensity: sensorData?.rainIntensity ?? null },
+                imageUrl: deviceImage ?? null
             };
         });
 
