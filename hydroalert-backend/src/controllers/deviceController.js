@@ -254,14 +254,12 @@ export const storeSensorData = async (req, res) => {
                         await handleNotification(req, deviceID, status, avgWater);
                     }
 
-                    // Predictive Analysis
+                    // Prediction logic
                     if (status !== 'Normal' && status !== 'Bahaya') {
                         const prediction = await predictNextStatusTime(deviceID, newSensorData);
+
                         if (prediction) {
                             await redisClient.hSet('latest_predictions', deviceID, JSON.stringify(prediction));
-
-                            // Emit prediction to monitoring page
-                            io.to(deviceID).emit('water_level_prediction', { deviceID, prediction });
                         }
                     }
 

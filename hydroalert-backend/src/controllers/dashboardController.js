@@ -78,12 +78,17 @@ export const getDashboardData = async (req, res) => {
             d => Date.now() - d.lastActive < 5 * 60 * 1000
         );
 
-        const worstPredictionRaw = worstData ? await redisClient.hGet('latest_predictions', worstData.deviceID) : null;
-        const worstPrediction = worstPredictionRaw ? JSON.parse(worstPredictionRaw) : null;
+        let worstPrediction = null;
+        if (worstData) {
+            const worstPredictionRaw = await redisClient.hGet('latest_predictions', worstData.deviceID);
+            worstPrediction = worstPredictionRaw ? JSON.parse(worstPredictionRaw) : null;
 
-        if (worstData?.status === 'Normal') {
-            worstPrediction = null;
+            // Reset prediksi jika status kembali Normal
+            if (worstData.status === 'Normal') {
+                worstPrediction = null;
+            }
         }
+
 
         res.json({
             success: true,
@@ -190,7 +195,7 @@ export const getMonitoringData = async (req, res) => {
             const parsedPred = rawPred ? JSON.parse(rawPred) : null;
 
             // Only consider prediction valid if it's based on fresh data
-            const isPredictionValid = isFresh && parsedPred;
+            const isPredictionValid = isFresh && parsedPred && sensorData?.status !== 'Normal' && sensorData?.status !== 'Bahaya';
             const predictionData = isPredictionValid ? parsedPred : null;
 
             const deviceImage = imageMap[device.deviceID];
