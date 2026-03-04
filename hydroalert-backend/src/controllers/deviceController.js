@@ -221,7 +221,7 @@ export const storeSensorData = async (req, res) => {
                 await redisClient.rPush(redisKey, JSON.stringify({ waterLevel, rainIntensity, windSpeed }));
                 const bufferLength = await redisClient.lLen(redisKey);
 
-                if (bufferLength >= 12) {
+                if (bufferLength >= 6) {
                     const processingKey = `processing:buffer:${deviceID}`;
                     // Move data to a processing key to avoid blocking new incoming data
                     const renamed = await redisClient.rename(redisKey, processingKey).catch(() => null);
