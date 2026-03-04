@@ -78,6 +78,13 @@ export const getDashboardData = async (req, res) => {
             d => Date.now() - d.lastActive < 5 * 60 * 1000
         );
 
+        const worstPredictionRaw = worstData ? await redisClient.hGet('latest_predictions', worstData.deviceID) : null;
+        const worstPrediction = worstPredictionRaw ? JSON.parse(worstPredictionRaw) : null;
+
+        if (worstData?.status === 'Normal') {
+            worstPrediction = null;
+        }
+
         res.json({
             success: true,
             data: {
@@ -93,6 +100,7 @@ export const getDashboardData = async (req, res) => {
                     total: devices.length,
                     active: activeDevices.length
                 },
+                prediction: worstPrediction,
                 notifications
             }
         });
@@ -149,7 +157,10 @@ export const getDashboardData = async (req, res) => {
  */
 export const getMonitoringData = async (req, res) => {
     try {
-        const allDevicesRaw = await redisClient.hGetAll('latest_device_status');
+        const [allDevicesRaw, allPredictionsRaw] = await Promise.all([
+            redisClient.hGetAll('latest_device_status'),
+            redisClient.hGetAll('latest_predictions') // Get latest predictions for devices
+        ]);
 
         // Preload Devices and Images to reduce DB calls
         const [devices, images] = await Promise.all([
@@ -169,8 +180,18 @@ export const getMonitoringData = async (req, res) => {
         const devicesMonitoring = devices.map(device => {
             const raw = allDevicesRaw[device.deviceID];
             const parsed = raw ? JSON.parse(raw) : null;
+
+            // Check if data is fresh (updated within last 5 minutes)
             const isFresh = parsed && new Date(parsed.updatedAt) >= fiveMinutesAgo;
             const sensorData = isFresh ? parsed : null; // Ignore stale/inactive readings
+
+            // Get prediction if available
+            const rawPred = allPredictionsRaw[device.deviceID];
+            const parsedPred = rawPred ? JSON.parse(rawPred) : null;
+
+            // Only consider prediction valid if it's based on fresh data
+            const isPredictionValid = isFresh && parsedPred;
+            const predictionData = isPredictionValid ? parsedPred : null;
 
             const deviceImage = imageMap[device.deviceID];
 
@@ -185,6 +206,7 @@ export const getMonitoringData = async (req, res) => {
                 },
                 wind: { speed: sensorData?.windSpeed ?? null },
                 rain: { intensity: sensorData?.rainIntensity ?? null },
+                prediction: predictionData,
                 imageUrl: deviceImage ?? null
             };
         });

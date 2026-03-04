@@ -123,7 +123,6 @@ export const storeSensorData = async (req, res) => {
         // First Sanity Check
         const lastReadingKey = `last_raw:${deviceID}`;
         const lastRaw = await redisClient.get(lastReadingKey);
-        console.log(`[Debug] Last raw data for ${deviceID}:`, lastRaw ? JSON.parse(lastRaw) : null, `Current raw water level: ${waterLevel}cm`);
 
         if (lastRaw) {
             const last = JSON.parse(lastRaw);
@@ -259,6 +258,9 @@ export const storeSensorData = async (req, res) => {
                     if (status !== 'Normal' && status !== 'Bahaya') {
                         const prediction = await predictNextStatusTime(deviceID, newSensorData);
                         if (prediction) {
+                            await redisClient.hSet('latest_predictions', deviceID, JSON.stringify(prediction));
+
+                            // Emit prediction to monitoring page
                             io.to(deviceID).emit('water_level_prediction', { deviceID, prediction });
                         }
                     }
